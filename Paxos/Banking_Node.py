@@ -11,6 +11,8 @@ import requests
 node_ip = "127.0.0.1"
 registry_ip = "127.0.0.1"
 
+active_nodes = {}
+
 class BankingService:
     def __init__(self, db_name="banking.db"):
         self.conn = sqlite3.connect(db_name)
@@ -68,7 +70,6 @@ class BankingService:
         """Close the database connection."""
         self.conn.close()
 
-
 def menu(node_id):
     db_name = f"banking_node_{node_id}.db"  # Unique DB for each node
     banking_service = BankingService(db_name=db_name)  # Initialize once for this node
@@ -88,7 +89,7 @@ def menu(node_id):
             initial_balance = float(input("Enter initial balance: "))
             action = {"action": "create_account", "name": name, "initial_balance": initial_balance}
 
-            total_nodes = get_total_nodes()
+            total_nodes = len(active_nodes)
 
             majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
             if majority_approval:
@@ -100,7 +101,7 @@ def menu(node_id):
             amount = float(input("Enter amount to deposit: "))
             action = {"action": "deposit", "name": name, "amount": amount}
 
-            total_nodes = get_total_nodes()
+            total_nodes = len(active_nodes)
 
             majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
             if majority_approval:
@@ -112,7 +113,7 @@ def menu(node_id):
             amount = float(input("Enter amount to withdraw: "))
             action = {"action": "withdraw", "name": name, "amount": amount}
 
-            total_nodes = get_total_nodes()
+            total_nodes = len(active_nodes)
 
             majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
             if majority_approval:
@@ -132,7 +133,6 @@ def menu(node_id):
 
         else:
             print("Invalid choice. Please try again.")
-
 
 def wait_for_majority_approval(node_id, total_nodes, action):
     """Wait for a majority of acceptors to approve the action using threading."""
@@ -222,12 +222,10 @@ def wait_for_majority_approval(node_id, total_nodes, action):
 
 def send_learn_to_all_nodes(node_id, action):
     """Send the 'learn' message to all nodes to finalize the action."""
-    nodes_dict = get_nodes()
-    print("Nodes: ", nodes_dict) #{'1': {'url': url}, '2': {'url': url}}
 
-    for node in nodes_dict.keys():
+    for node in active_nodes.keys():
         if int(node) != node_id:
-            send_to_node(nodes_dict[node]['url'], {"action": "learn", "data": action})
+            send_to_node(active_nodes[node]['url'], {"action": "learn", "data": action})
 
 def increase_reputation(node_id):
     """Increase the reputation of a node."""
@@ -252,7 +250,6 @@ def decrease_reputation(node_id):
             print(f"Failed to decrease reputation for Node {node_id}. Error: {response.text}")
     except requests.exceptions.RequestException as e:
         print(f"Error connecting to the registry: {e}")
-
 
 def send_and_wait_for_response(node_id, action,node_url ,timeout=15):
     """
@@ -280,7 +277,6 @@ def send_and_wait_for_response(node_id, action,node_url ,timeout=15):
 
     finally:
         client_socket.close()
-
 
 def perform_action(action, banking_service):
     """Perform the action on the local node using the shared banking service."""
@@ -319,13 +315,9 @@ def perform_action(action, banking_service):
 
 def send_action_to_all_nodes(node_id, total_nodes, action):
     """Send the action to all other nodes for consensus."""
-    nodes_dict = get_nodes()
-    print("Nodes: ", nodes_dict) #{'1': {'url': url}, '2': {'url': url}}
-    for node in nodes_dict.keys():
+    for node in active_nodes.keys():
         if int(node) != node_id:
-            send_to_node(nodes_dict[node]['url'], {"action": "learn", "data": action})
-
-
+            send_to_node(active_nodes[node]['url'], {"action": "learn", "data": action})
 
 def send_to_node(acceptor_url, action):
     """Send an action to a specific node."""
@@ -368,7 +360,6 @@ def check_if_possible(action, banking_service):
         print(f"An error occurred while checking the action: {str(e)}")
         return "rejected"
 
-
 def listen_for_actions(node_id, db_name):
     """Function to listen for incoming connections from other nodes."""
     host = "0.0.0.0" # Listen on all interfaces
@@ -403,9 +394,7 @@ def listen_for_actions(node_id, db_name):
             print("3. Withdraw Money")
             print("4. Check Balance")
             print("5. Exit")
-
         else:
-
             response = check_if_possible(action, banking_service)
 
 
@@ -422,12 +411,75 @@ def register_with_registry(node_id):
         response = requests.post(registry_url, json={"node_id": node_id, "node_url": node_url})
         if response.status_code == 201:
             print(f"Node {node_id} registered successfully with the registry.")
+            active_nodes = get_nodes()
+            #send registration to active nodes
+            if len(active_nodes) > 1:
+                send_registration_to_active_nodes(active_nodes, node_id, node_url)
         elif response.status_code == 200:
             print(f"Node {node_id} already registered with the registry.")
         else:
             print(f"Failed to register node {node_id}. Error: {response.text}")
     except requests.exceptions.RequestException as e:
         print(f"Error connecting to the registry: {e}")
+
+def send_registration_to_active_nodes(active_nodes, node_id, node_url):
+    """
+    Sends the registration information to all active nodes.
+    """
+    for node in active_nodes:
+        node_url = node.get("node_url")  # Assuming the node URL is in the "node_url" field
+        if node_url:
+            try:
+                # Send the registration information to each active node
+                registration_data = {"node_id": node_id, "node_url": f"http://{node_ip}:{5000}"}
+                response = requests.post(f"{node_url}/register", json=registration_data)
+                if response.status_code == 200:
+                    print(f"Registration of Node {node_id} sent to active node {node['node_id']}.")
+                else:
+                    print(f"Failed to send registration to Node {node['node_id']}.")
+            except requests.exceptions.RequestException as e:
+                print(f"Error sending registration to node {node['node_id']}: {e}")
+
+def listen_for_node_registrations():
+    """Function to listen for new node registration requests."""
+    host = "0.0.0.0"
+    port = 5001  # You can choose a specific port for the registry listener
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    # Bind to the port and start listening
+    server_socket.bind((host, port))
+    server_socket.listen(5)
+    print("Registry listener started on port 5000...")
+
+    while True:
+        client_socket, addr = server_socket.accept()  # Accept incoming connection
+        print(f"Registration request received from {addr}.")
+
+        # Receive registration request data
+        registration_data = client_socket.recv(1024).decode()
+        registration_info = json.loads(registration_data)
+        print(f"Received registration data: {registration_info}")
+
+        node_id = registration_info.get("node_id")
+        node_url = registration_info.get("node_url")
+
+        # Process the registration
+        if node_id and node_url:
+            # Store node_id and node_url in the registry (implement registry logic)
+            print(f"Node {node_id} registered with URL {node_url}.")
+            # You could update a list of registered nodes here
+            active_nodes[node_id] = {"url": node_url, "reputation": 100}
+
+            # Send acknowledgment to the client (node)
+            response = {"status": "success", "message": f"Node {node_id} registered successfully."}
+            client_socket.send(json.dumps(response).encode())
+        else:
+            # Invalid registration data
+            response = {"status": "error", "message": "Invalid registration data."}
+            client_socket.send(json.dumps(response).encode())
+
+        print("Active nodes: ", active_nodes)
+        client_socket.close()
 
 def get_nodes():
     """
@@ -444,23 +496,7 @@ def get_nodes():
     except requests.exceptions.RequestException as e:
         print(f"Error connecting to the registry: {e}")
         return {}
-
-def get_total_nodes():
-    """
-    Get the total number of nodes registered with the registry.
-    """
-    registry_url = f"http://{registry_ip}:5000/total_nodes"
-    try:
-        response = requests.get(registry_url)
-        if response.status_code == 200:
-            return response.json()["total_nodes"]
-        else:
-            print(f"Failed to get total nodes. Error: {response.text}")
-            return 0
-    except requests.exceptions.RequestException as e:
-        print(f"Error connecting to the registry: {e}")
-        return 0
-    
+ 
 def unregister_node(node_id):
     registry_url = f"http://{registry_ip}:5000/deregister"
     try:
@@ -486,13 +522,15 @@ def start_banking_service(node_id):
 
     #Get total nodes
 
-
-    print("Total nodes: ", get_total_nodes())
-
     # Start the listener thread for this node
     listener_thread = threading.Thread(target=listen_for_actions, args=(node_id, db_name))
     listener_thread.daemon = True  # Ensure the thread exits when the main program exits
     listener_thread.start()
+
+    # Start the registry listener thread
+    registry_thread = threading.Thread(target=listen_for_node_registrations)
+    registry_thread.daemon = True
+    registry_thread.start()
 
     # Proceed with the menu and banking operations
     menu(node_id)
