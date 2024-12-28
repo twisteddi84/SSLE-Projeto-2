@@ -404,13 +404,14 @@ def listen_for_actions(node_id, db_name):
         client_socket.close()
 
 def register_with_registry(node_id):
-    global active_nodes
     """
     Registers the node with the registry service.
     """
+    global active_nodes
+
     registry_url = f"http://{registry_ip}:5000/register"  # Adjust URL as needed
     node_url = f"http://{node_ip}:{5000}"
-    active_nodes[node_id] = {"url": node_url, "reputation": 100}
+    
     try:
         response = requests.post(registry_url, json={"node_id": node_id, "node_url": node_url})
         if response.status_code == 201:
@@ -419,13 +420,16 @@ def register_with_registry(node_id):
             #send registration to active nodes
             if len(active_nodes) > 0:
                 send_registration_to_active_nodes(active_nodes, node_id, node_url)
-                active_nodes[node_id] = {"url": node_url, "reputation": 100}
+                active_nodes[str(node_id)] = {"url": node_url, "reputation": 100}
+            else:
+                active_nodes[str(node_id)] = {"url": node_url, "reputation": 100}
         elif response.status_code == 200:
             print(f"Node {node_id} already registered with the registry.")
         else:
             print(f"Failed to register node {node_id}. Error: {response.text}")
     except requests.exceptions.RequestException as e:
         print(f"Error connecting to the registry: {e}")
+
 
 def send_registration_to_active_nodes(active_nodes, node_id, node_ip):
     """
