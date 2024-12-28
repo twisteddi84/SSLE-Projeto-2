@@ -142,10 +142,10 @@ def wait_for_majority_approval(node_id, total_nodes, action):
     responses = {}
     lock = threading.Lock()
 
-    def request_approval(acceptor_id):
+    def request_approval(acceptor_id,acceptor_url):
         """Send request and process the response."""
         nonlocal approvals
-        responses[acceptor_id] = send_and_wait_for_response(acceptor_id, action)
+        responses[acceptor_id] = send_and_wait_for_response(acceptor_id, action,acceptor_url)
         with lock:
             #Node id 4 is always rejected
             if responses[acceptor_id] == "approved":
@@ -170,7 +170,8 @@ def wait_for_majority_approval(node_id, total_nodes, action):
 
     for acceptor_id in all_nodes.keys():
         if int(acceptor_id) != node_id:
-            thread = threading.Thread(target=request_approval, args=(int(acceptor_id),))
+            acceptor_url = all_nodes[acceptor_id]['url']
+            thread = threading.Thread(target=request_approval, args=(int(acceptor_id),acceptor_url))
             threads.append(thread)
             thread.start()
 
@@ -253,13 +254,13 @@ def decrease_reputation(node_id):
         print(f"Error connecting to the registry: {e}")
 
 
-def send_and_wait_for_response(node_id, action, timeout=15):
+def send_and_wait_for_response(node_id, action,node_url ,timeout=15):
     """
     Send an action to a node and wait for the response with a timeout.
     If the node doesn't respond within the timeout, assume rejection.
     """
-    host = node_ip
-    port = 5000 + node_id
+    host = node_url.split(":")[1].replace("/", "")
+    port = int(node_url.split(":")[2])
 
     try:
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -377,7 +378,7 @@ def check_if_possible(action, banking_service):
 
 def listen_for_actions(node_id, db_name):
     """Function to listen for incoming connections from other nodes."""
-    host = node_ip
+    host = "0.0.0.0" # Listen on all interfaces
     port = 5000 + node_id
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
