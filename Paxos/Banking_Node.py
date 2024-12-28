@@ -138,7 +138,6 @@ def wait_for_majority_approval(node_id, total_nodes, action):
     """Wait for a majority of acceptors to approve the action using threading."""
     approvals = 0
     required_approvals = total_nodes // 2 + 1
-    all_nodes = get_nodes()
     responses = {}
     lock = threading.Lock()
 
@@ -167,10 +166,9 @@ def wait_for_majority_approval(node_id, total_nodes, action):
     local_thread.start()
 
     threads = []
-
-    for acceptor_id in all_nodes.keys():
+    for acceptor_id in active_nodes.keys():
         if int(acceptor_id) != node_id:
-            acceptor_url = all_nodes[acceptor_id]['url']
+            acceptor_url = active_nodes[acceptor_id]['url']
             thread = threading.Thread(target=request_approval, args=(int(acceptor_id),acceptor_url))
             threads.append(thread)
             thread.start()
@@ -180,12 +178,11 @@ def wait_for_majority_approval(node_id, total_nodes, action):
     for thread in threads:
         thread.join()
 
-    node_dict = get_nodes()
 
     #Just use the node_id each reputation is higher than 50
-    for node in node_dict.keys():
+    for node in active_nodes.keys():
         if int(node) != node_id:
-            if node_dict[node]['reputation'] < 50:
+            if active_nodes[node]['reputation'] < 50:
                 print(f"Node {node} reputation is lower than 50. Node {node} will be ignored.")
                 del responses[int(node)]
                 approvals -= 1
@@ -229,6 +226,8 @@ def send_learn_to_all_nodes(node_id, action):
 
 def increase_reputation(node_id):
     """Increase the reputation of a node."""
+    active_nodes[node_id]['reputation'] += 10
+    print(f"Reputation increased for Node {node_id}. New reputation: {active_nodes[node_id]['reputation']}")
     registry_url = f"http://{registry_ip}:5000/reputation/increase"
     try:
         response = requests.post(registry_url, json={"node_id": node_id})
@@ -241,6 +240,8 @@ def increase_reputation(node_id):
 
 def decrease_reputation(node_id):
     """Decrease the reputation of a node."""
+    active_nodes[node_id]['reputation'] -= 20
+    print(f"Reputation decreased for Node {node_id}. New reputation: {active_nodes[node_id]['reputation']}")
     registry_url = f"http://{registry_ip}:5000/reputation/decrease"
     try:
         response = requests.post(registry_url, json={"node_id": node_id})
