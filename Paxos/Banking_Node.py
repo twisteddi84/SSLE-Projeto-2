@@ -226,8 +226,9 @@ def send_learn_to_all_nodes(node_id, action):
 
 def increase_reputation(node_id):
     """Increase the reputation of a node."""
-    active_nodes[node_id]['reputation'] += 10
-    print(f"Reputation increased for Node {node_id}. New reputation: {active_nodes[node_id]['reputation']}")
+    global active_nodes
+    active_nodes[str(node_id)]['reputation'] += 10
+    print(f"Reputation increased for Node {node_id}. New reputation: {active_nodes[str(node_id)]['reputation']}")
     registry_url = f"http://{registry_ip}:5000/reputation/increase"
     try:
         response = requests.post(registry_url, json={"node_id": node_id})
@@ -403,19 +404,22 @@ def listen_for_actions(node_id, db_name):
         client_socket.close()
 
 def register_with_registry(node_id):
+    global active_nodes
     """
     Registers the node with the registry service.
     """
     registry_url = f"http://{registry_ip}:5000/register"  # Adjust URL as needed
     node_url = f"http://{node_ip}:{5000}"
+    active_nodes[node_id] = {"url": node_url, "reputation": 100}
     try:
         response = requests.post(registry_url, json={"node_id": node_id, "node_url": node_url})
         if response.status_code == 201:
             print(f"Node {node_id} registered successfully with the registry.")
             active_nodes = get_nodes()
             #send registration to active nodes
-            if len(active_nodes) > 1:
+            if len(active_nodes) > 0:
                 send_registration_to_active_nodes(active_nodes, node_id, node_url)
+                active_nodes[node_id] = {"url": node_url, "reputation": 100}
         elif response.status_code == 200:
             print(f"Node {node_id} already registered with the registry.")
         else:
@@ -428,20 +432,21 @@ def send_registration_to_active_nodes(active_nodes, node_id, node_ip):
     Sends the registration information to all active nodes via socket communication.
     """
     for node in active_nodes:
-        if int(node) != int(node_id):
+        if str(node) != str(node_id):
+            print(f"Adding Node {node} to the registry...")
             node_url = active_nodes[node]['url']
             if node_url:
                 try:
                     # Extract IP and port from the node URL
-                    node_ip, node_port = node_url.replace("http://", "").split(":")
-                    node_port = 5001  # Registry listener port
+                    node_ip_send= node_url.replace("http://", "").split(":")[0]
+                    node_port_send = 5001
 
                     # Create a socket connection to the target node
                     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-                        client_socket.connect((node_ip, node_port))
+                        client_socket.connect((node_ip_send, node_port_send))
                         registration_data = {
                             node_id: {
-                                "url": f"http://{node_ip}:{5000}",
+                                "url": f"{node_ip}",
                                 "reputation": 100
                             }
                         }
