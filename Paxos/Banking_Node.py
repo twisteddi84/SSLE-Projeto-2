@@ -422,64 +422,79 @@ def register_with_registry(node_id):
     except requests.exceptions.RequestException as e:
         print(f"Error connecting to the registry: {e}")
 
-def send_registration_to_active_nodes(active_nodes, node_id, node_url):
+def send_registration_to_active_nodes(active_nodes, node_id, node_ip):
     """
-    Sends the registration information to all active nodes.
+    Sends the registration information to all active nodes via socket communication.
     """
     for node in active_nodes:
-        node_url = node.get("node_url")  # Assuming the node URL is in the "node_url" field
-        if node_url:
-            try:
-                # Send the registration information to each active node
-                registration_data = {"node_id": node_id, "node_url": f"http://{node_ip}:{5000}"}
-                response = requests.post(f"{node_url}/register", json=registration_data)
-                if response.status_code == 200:
-                    print(f"Registration of Node {node_id} sent to active node {node['node_id']}.")
-                else:
-                    print(f"Failed to send registration to Node {node['node_id']}.")
-            except requests.exceptions.RequestException as e:
-                print(f"Error sending registration to node {node['node_id']}: {e}")
+        if int(node) != int(node_id):
+            node_url = active_nodes[node]['url']
+            if node_url:
+                try:
+                    # Extract IP and port from the node URL
+                    node_ip, node_port = node_url.replace("http://", "").split(":")
+                    node_port = 5001  # Registry listener port
+
+                    # Create a socket connection to the target node
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+                        client_socket.connect((node_ip, node_port))
+                        registration_data = {
+                            node_id: {
+                                "url": f"http://{node_ip}:{5000}",
+                                "reputation": 100
+                            }
+                        }
+                        client_socket.send(json.dumps(registration_data).encode())
+                        print(f"Sent registration data to Node {node}.")
+                except Exception as e:
+                    print(f"Error sending registration to node {node}: {e}")
 
 def listen_for_node_registrations():
     """Function to listen for new node registration requests."""
     host = "0.0.0.0"
-    port = 5001  # You can choose a specific port for the registry listener
+    port = 5001  # Listener port for incoming node registrations
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     # Bind to the port and start listening
     server_socket.bind((host, port))
     server_socket.listen(5)
-    print("Registry listener started on port 5000...")
+    print(f"Registry listener started on port {port}...")
 
     while True:
         client_socket, addr = server_socket.accept()  # Accept incoming connection
         print(f"Registration request received from {addr}.")
 
-        # Receive registration request data
-        registration_data = client_socket.recv(1024).decode()
-        registration_info = json.loads(registration_data)
-        print(f"Received registration data: {registration_info}")
+        try:
+            # Receive registration request data
+            registration_data = client_socket.recv(1024).decode()
+            registration_info = json.loads(registration_data)
+            print(f"Received registration data: {registration_info}")
 
-        node_id = registration_info.get("node_id")
-        node_url = registration_info.get("node_url")
-
-        # Process the registration
-        if node_id and node_url:
-            # Store node_id and node_url in the registry (implement registry logic)
-            print(f"Node {node_id} registered with URL {node_url}.")
-            # You could update a list of registered nodes here
-            active_nodes[node_id] = {"url": node_url, "reputation": 100}
+            # Process the registration
+            for node_id, node_details in registration_info.items():
+                if "url" in node_details and "reputation" in node_details:
+                    active_nodes[node_id] = {
+                        "url": node_details["url"],
+                        "reputation": node_details["reputation"]
+                    }
+                    print(f"Node {node_id} registered with URL {node_details['url']} and reputation {node_details['reputation']}.")
+                else:
+                    print(f"Invalid registration data received: {node_details}")
 
             # Send acknowledgment to the client (node)
-            response = {"status": "success", "message": f"Node {node_id} registered successfully."}
+            response = {"status": "success", "message": "Node registration processed successfully."}
             client_socket.send(json.dumps(response).encode())
-        else:
-            # Invalid registration data
-            response = {"status": "error", "message": "Invalid registration data."}
+        except json.JSONDecodeError as e:
+            print(f"Error decoding registration data: {e}")
+            response = {"status": "error", "message": "Invalid registration data format."}
             client_socket.send(json.dumps(response).encode())
-
-        print("Active nodes: ", active_nodes)
-        client_socket.close()
+        except Exception as e:
+            print(f"Unexpected error processing registration: {e}")
+            response = {"status": "error", "message": "An error occurred during registration."}
+            client_socket.send(json.dumps(response).encode())
+        finally:
+            print("Active nodes: ", active_nodes)
+            client_socket.close()
 
 def get_nodes():
     """
