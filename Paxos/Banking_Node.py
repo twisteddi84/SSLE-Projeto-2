@@ -8,6 +8,9 @@ import time
 
 import requests
 
+node_ip = "127.0.0.1"
+registry_ip = "127.0.0.1"
+
 class BankingService:
     def __init__(self, db_name="banking.db"):
         self.conn = sqlite3.connect(db_name)
@@ -227,7 +230,7 @@ def send_learn_to_all_nodes(node_id, action):
 
 def increase_reputation(node_id):
     """Increase the reputation of a node."""
-    registry_url = "http://127.0.0.1:5000/reputation/increase"
+    registry_url = f"http://{registry_ip}:5000/reputation/increase"
     try:
         response = requests.post(registry_url, json={"node_id": node_id})
         if response.status_code == 200:
@@ -239,7 +242,7 @@ def increase_reputation(node_id):
 
 def decrease_reputation(node_id):
     """Decrease the reputation of a node."""
-    registry_url = "http://127.0.0.1:5000/reputation/decrease"
+    registry_url = f"http://{registry_ip}:5000/reputation/decrease"
     try:
         response = requests.post(registry_url, json={"node_id": node_id})
         if response.status_code == 200:
@@ -255,7 +258,7 @@ def send_and_wait_for_response(node_id, action, timeout=15):
     Send an action to a node and wait for the response with a timeout.
     If the node doesn't respond within the timeout, assume rejection.
     """
-    host = "127.0.0.1"
+    host = node_ip
     port = 5000 + node_id
 
     try:
@@ -374,7 +377,7 @@ def check_if_possible(action, banking_service):
 
 def listen_for_actions(node_id, db_name):
     """Function to listen for incoming connections from other nodes."""
-    host = "127.0.0.1"
+    host = node_ip
     port = 5000 + node_id
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -419,8 +422,8 @@ def register_with_registry(node_id):
     """
     Registers the node with the registry service.
     """
-    registry_url = "http://127.0.0.1:5000/register"  # Adjust URL as needed
-    node_url = f"http://127.0.0.1:{5000 + node_id}"
+    registry_url = f"http://{registry_ip}:5000/register"  # Adjust URL as needed
+    node_url = f"http://{node_ip}:{5000 + node_id}"
     try:
         response = requests.post(registry_url, json={"node_id": node_id, "node_url": node_url})
         if response.status_code == 201:
@@ -436,7 +439,7 @@ def get_nodes():
     """
     Get the list of all nodes registered with the registry.
     """
-    registry_url = "http://127.0.0.1:5000/nodes"
+    registry_url = f"http://{registry_ip}:5000/nodes"
     try:
         response = requests.get(registry_url)
         if response.status_code == 200:
@@ -452,7 +455,7 @@ def get_total_nodes():
     """
     Get the total number of nodes registered with the registry.
     """
-    registry_url = "http://127.0.0.1:5000/total_nodes"
+    registry_url = f"http://{registry_ip}:5000/total_nodes"
     try:
         response = requests.get(registry_url)
         if response.status_code == 200:
@@ -465,7 +468,7 @@ def get_total_nodes():
         return 0
     
 def unregister_node(node_id):
-    registry_url = "http://127.0.0.1:5000/deregister"
+    registry_url = f"http://{registry_ip}:5000/deregister"
     try:
         response = requests.post(registry_url, json={"node_id": node_id})
         if response.status_code == 200:
