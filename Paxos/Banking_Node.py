@@ -331,7 +331,6 @@ def send_to_node(acceptor_url, action):
     """Send an action to a specific node."""
     host = acceptor_url.split(":")[1].replace("/", "")
     port = int(acceptor_url.split(":")[2])
-
     try:
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client_socket.connect((host, port))
@@ -346,29 +345,23 @@ def check_if_possible(action, banking_service):
     time.sleep(10)
     if 'action' not in action:
         return "rejected"
-
     action_type = action['action']
-
     try:
         if action_type == "deposit":
             if 'name' in action and 'amount' in action:
                 balance = banking_service.get_balance(action["name"])
                 if balance is not None:
                     return "approved"
-        
         elif action_type == "withdraw":
             if 'name' in action and 'amount' in action:
                 balance = banking_service.get_balance(action["name"])
                 if balance is not None and balance >= action["amount"]:
                     return "approved"
-        
         elif action_type == "create_account":
             if 'name' in action and 'initial_balance' in action:
                 return "approved"
-        
         else:
             return "rejected"
-    
     except KeyError:
         return "rejected"
     except Exception as e:
@@ -379,7 +372,7 @@ def check_if_possible(action, banking_service):
 def listen_for_actions(node_id, db_name):
     """Function to listen for incoming connections from other nodes."""
     host = "0.0.0.0" # Listen on all interfaces
-    port = 5000 + node_id
+    port = 5000
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     # Bind to the port and start listening
@@ -424,7 +417,7 @@ def register_with_registry(node_id):
     Registers the node with the registry service.
     """
     registry_url = f"http://{registry_ip}:5000/register"  # Adjust URL as needed
-    node_url = f"http://{node_ip}:{5000 + node_id}"
+    node_url = f"http://{node_ip}:{5000}"
     try:
         response = requests.post(registry_url, json={"node_id": node_id, "node_url": node_url})
         if response.status_code == 201:
