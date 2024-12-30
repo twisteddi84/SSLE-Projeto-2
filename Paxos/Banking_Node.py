@@ -12,6 +12,7 @@ node_ip = "127.0.0.1"
 registry_ip = "127.0.0.1"
 
 active_nodes = {}
+max_proposal = 0
 
 class BankingService:
     def __init__(self, db_name="banking.db"):
@@ -91,10 +92,12 @@ def menu(node_id):
 
             total_nodes = len(active_nodes)
 
-            majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
-            if majority_approval:
-                banking_service.create_account(name, initial_balance)
-                send_action_to_all_nodes(node_id, total_nodes, action)
+            if send_prepare_message(node_id):
+
+                majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
+                if majority_approval:
+                    banking_service.create_account(name, initial_balance)
+                    send_action_to_all_nodes(node_id, total_nodes, action)
 
         elif choice == "2":
             name = input("Enter account holder's name: ")
@@ -133,6 +136,56 @@ def menu(node_id):
 
         else:
             print("Invalid choice. Please try again.")
+
+
+
+def send_prepare_message(node_id):
+    """
+    Sends a Prepare message to all other active nodes in the cluster using sockets.
+    """
+    global active_nodes, max_proposal
+    max_proposal += 1  # Increment global proposal number
+    prepare_message = {"type": "prepare", "proposal_number": max_proposal}
+    promises_received = 0
+    majority = (len(active_nodes) // 2) + 1  # Majority threshold
+
+    print(f"Node {node_id} is sending Prepare message with proposal number {max_proposal}...")
+
+    for other_node_id, node_info in active_nodes.items():
+        if str(other_node_id) == str(node_id):
+            continue  # Skip sending to itself
+        
+        try:
+            # Extract host and port from the node's URL
+            host = node_info['url'].split(":")[1].replace("/", "")
+            port = node_info['url'].split(":")[2]
+            port = int(port)
+
+            # Connect to the other node
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((host, port))
+
+                # Send the prepare message
+                s.sendall(json.dumps(prepare_message).encode())
+
+                # Receive the response
+                response_data = s.recv(1024).decode()
+                response = json.loads(response_data)
+
+                # Check the response
+                if response.get("status") == "promise":
+                    promises_received += 1
+                    print(f"Node {other_node_id} responded with Promise.")
+                else:
+                    print(f"Node {other_node_id} rejected Prepare: {response}")
+
+        except (socket.error, json.JSONDecodeError) as e:
+            print(f"Node {other_node_id} did not respond or failed to process the message: {e}")
+
+    print(f"Promises received: {promises_received}/{len(active_nodes) - 1} (Majority needed: {majority})")
+    return promises_received >= majority
+
+
 
 def wait_for_majority_approval(node_id, total_nodes, action):
     """Wait for a majority of acceptors to approve the action using threading."""
@@ -362,9 +415,11 @@ def check_if_possible(action, banking_service):
         print(f"An error occurred while checking the action: {str(e)}")
         return "rejected"
 
-def listen_for_actions(node_id, db_name):
-    """Function to listen for incoming connections from other nodes."""
-    host = "0.0.0.0" # Listen on all interfaces
+def listen_for_messages(node_id, db_name):
+    """
+    Function to listen for incoming connections from other nodes, handling actions and Paxos prepare messages.
+    """
+    host = "0.0.0.0"  # Listen on all interfaces
     port = 5000
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -373,35 +428,56 @@ def listen_for_actions(node_id, db_name):
     server_socket.listen(5)
     print(f"Node {node_id} listening on port {port}...")
 
+    # Track the highest prepare proposal number seen
+    highest_prepare_proposal = 0
+
     while True:
         client_socket, addr = server_socket.accept()  # Accept incoming connection
         print(f"Connection from {addr} received.")
 
-        # Receive action from the client
-        action_data = client_socket.recv(1024).decode()
-        action = json.loads(action_data)
-        print(f"Received action: {action}")
+        # Receive the message from the client
+        message_data = client_socket.recv(1024).decode()
+        try:
+            message = json.loads(message_data)
+            print(f"Received message: {message}")
 
-        # Create a new BankingService instance for this thread
-        banking_service = BankingService(db_name=db_name)
+            response = ""
 
-        # Process the action based on its type
-        if action["action"] == "learn":
-            perform_action(action["data"], banking_service)  # Apply the action
-            response = "learned"  # Acknowledge that the node has applied the action
-            #Print menu again
-            print(f"\n--- Banking Service Menu for Node {node_id} ---")
-            print("1. Create Account")
-            print("2. Deposit Money")
-            print("3. Withdraw Money")
-            print("4. Check Balance")
-            print("5. Exit")
-        else:
-            response = check_if_possible(action, banking_service)
+            # Check the type of the message
+            if message.get("action") == "learn":
+                print(f"Received Learn message from {addr}: {message}")
+                # Process a learning action
+                banking_service = BankingService(db_name=db_name)
+                perform_action(message["data"], banking_service)  # Apply the action
+                response = "learned"
 
+            elif message.get("type") == "prepare":
+                print(f"Received Prepare message from {addr}: {message}")
+                # Handle Paxos Prepare messages
+                proposal_number = message["proposal_number"]
+                if proposal_number > highest_prepare_proposal:
+                    highest_prepare_proposal = proposal_number
+                    response = json.dumps({"status": "promise", "proposal_number": proposal_number})
+                    print(f"Promised proposal {proposal_number}")
+                else:
+                    response = json.dumps({"status": "reject", "proposal_number": proposal_number})
+                    print(f"Rejected proposal {proposal_number} (already promised {highest_prepare_proposal})")
 
-        client_socket.send(response.encode())
-        client_socket.close()
+            else:
+                # Handle other messages, such as checking feasibility of actions
+                banking_service = BankingService(db_name=db_name)
+                response = check_if_possible(message, banking_service)
+
+            # Send the response back to the sender
+            client_socket.send(response.encode())
+
+        except json.JSONDecodeError:
+            print(f"Failed to decode message from {addr}. Ignoring.")
+        except Exception as e:
+            print(f"Error processing message from {addr}: {e}")
+
+        finally:
+            client_socket.close()
 
 def register_with_registry(node_id):
     """
@@ -429,7 +505,6 @@ def register_with_registry(node_id):
             print(f"Failed to register node {node_id}. Error: {response.text}")
     except requests.exceptions.RequestException as e:
         print(f"Error connecting to the registry: {e}")
-
 
 def send_registration_to_active_nodes(active_nodes, node_id, node_ip):
     """
@@ -548,7 +623,7 @@ def start_banking_service(node_id):
     #Get total nodes
 
     # Start the listener thread for this node
-    listener_thread = threading.Thread(target=listen_for_actions, args=(node_id, db_name))
+    listener_thread = threading.Thread(target=listen_for_messages, args=(node_id, db_name))
     listener_thread.daemon = True  # Ensure the thread exits when the main program exits
     listener_thread.start()
 
