@@ -370,6 +370,10 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
 
     print(f"Verifying proposal {proposal_number} responses...")
 
+    if total_nodes < 4:
+        print(f"Insufficient nodes for BFT consensus. Minimum 4 nodes required, but {total_nodes} found.")
+        return
+
     # Get the responses for this proposal number
     responses = proposal_responses[proposal_number]
 
@@ -385,34 +389,39 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
 
     print(f"Approvals: {approvals}, Rejections: {rejections}")
 
-    #Verify the majority response action and add the malicious ones to the list
-    action_count = defaultdict(int)
-    for response in responses:
-        action = response["action"]
+    #Verify the majority response action and add the malicious ones to the lis
 
-        # Convert the action dictionary to a tuple of sorted key-value pairs for hashing
-        action_key = tuple(sorted(action.items()))
-
-        action_count[action_key] += 1
-
-    # Determine the majority action
-    majority_action_key = max(action_count, key=action_count.get)
-
-    # Convert the majority action key back to a dictionary for comparison
-    majority_action = dict(majority_action_key)
-
-    # Identify malicious nodes
-    malicious_nodes = [
-        response["node_id"] for response in responses
-        if dict(sorted(response["action"].items())) != majority_action
-    ]
-    
-    print(f"Majority action: {majority_action}")
-    print(f"Malicious nodes: {malicious_nodes}")
 
     # Check if the proposal is approved by the threshold
     if approvals >= threshold:
         print(f"Proposal {proposal_number} is approved by the threshold of {threshold}.")
+
+        action_count = defaultdict(int)
+
+        for response in responses:
+            if response["status"] == "rejected":
+                continue
+            action = response["action"]
+
+            # Convert the action dictionary to a tuple of sorted key-value pairs for hashing
+            action_key = tuple(sorted(action.items()))
+
+            action_count[action_key] += 1
+
+        # Determine the majority action
+        majority_action_key = max(action_count, key=action_count.get)
+
+        # Convert the majority action key back to a dictionary for comparison
+        majority_action = dict(majority_action_key)
+
+        # Identify malicious nodes
+        malicious_nodes = [
+            response["node_id"] for response in responses
+            if "action" not in response or dict(sorted(response["action"].items())) != majority_action
+        ]
+
+        print(f"Majority action: {majority_action}")
+        print(f"Malicious nodes: {malicious_nodes}")
         # Perform the action locally
         # banking_service = BankingService(db_name=db_name)
         # perform_action(action, banking_service)
