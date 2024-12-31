@@ -410,9 +410,12 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
         # Increase reputation for non-malicious nodes
         for node in active_nodes:
             if node not in malicious_nodes:
+                print(f"Reputation increased for Node {node}.")
                 increase_reputation(node)
             else:
+                print(f"Reputation decreased for Node {node}.")
                 decrease_reputation(node)
+        print("Final list of active nodes: ", active_nodes)
     else:
         print(f"Proposal {proposal_number} is rejected by the threshold of {threshold}.")
         # Send 'rejected' message to all nodes
