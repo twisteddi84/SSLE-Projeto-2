@@ -397,14 +397,14 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
 
         # Identify malicious nodes
         malicious_nodes = [
-            response["node_id"] for response in responses
+            str(response["node_id"]) for response in responses
             if "action" not in response or dict(sorted(response["action"].items())) != majority_action
         ]
 
         #Append reject nodes to malicious nodes
         for response in responses:
             if response["status"] == "rejected":
-                malicious_nodes.append(response["node_id"])
+                malicious_nodes.append(str(response["node_id"]))
 
         print(f"Majority action: {majority_action}")
         print(f"Malicious nodes: {malicious_nodes}")
