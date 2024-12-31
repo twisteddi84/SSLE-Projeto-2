@@ -406,6 +406,13 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
         print(f"Malicious nodes: {malicious_nodes}")
         # Perform the action locally
         perform_action(majority_action, BankingService(db_name=f"banking_node_{node_id}.db"))
+
+        # Increase reputation for non-malicious nodes
+        for node in active_nodes:
+            if node not in malicious_nodes:
+                increase_reputation(node)
+            else:
+                decrease_reputation(node)
     else:
         print(f"Proposal {proposal_number} is rejected by the threshold of {threshold}.")
         # Send 'rejected' message to all nodes
@@ -509,8 +516,9 @@ def increase_reputation(node_id):
 
 def decrease_reputation(node_id):
     """Decrease the reputation of a node."""
-    active_nodes[node_id]['reputation'] -= 20
-    print(f"Reputation decreased for Node {node_id}. New reputation: {active_nodes[node_id]['reputation']}")
+    global active_nodes
+    active_nodes[str(node_id)]['reputation'] -= 20
+    print(f"Reputation decreased for Node {node_id}. New reputation: {active_nodes[str(node_id)]['reputation']}")
     registry_url = f"http://{registry_ip}:5000/reputation/decrease"
     try:
         response = requests.post(registry_url, json={"node_id": node_id})
