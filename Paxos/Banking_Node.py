@@ -295,9 +295,6 @@ def listen_for_broadcasts(node_id):
     # Flag to stop listening after time expires
     stop_flag = [False]
 
-    # Start the timer to stop listening after WAIT_TIME seconds
-    timer = threading.Timer(10, stop_listening, [stop_flag])
-    timer.start()
 
     while not stop_flag[0]:  # Continue listening until time expires
         try:
@@ -322,6 +319,8 @@ def listen_for_broadcasts(node_id):
                         # Start the timer for the new proposal number
                         print(f"Starting timer for proposal {proposal_number}")
                         proposal_start_time[proposal_number] = time.time()
+                        timer = threading.Timer(10, stop_listening, [stop_flag])
+                        timer.start()
 
                     # Add the response to the list of responses for this proposal number
                     proposal_responses[proposal_number].append({
