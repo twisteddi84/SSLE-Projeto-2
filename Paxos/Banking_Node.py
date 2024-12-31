@@ -327,6 +327,7 @@ def listen_for_broadcasts(node_id):
         # Now check if we have exceeded the waiting time for any proposals
         current_time = time.time()
         for proposal_number, start_time in list(proposal_start_time.items()):
+            print(f"Checking proposal {proposal_number} for timeout...")
             if current_time - start_time >= WAIT_TIME:
                 # Process the consensus calculation for this proposal
                 print(f"Waiting time for proposal {proposal_number} exceeded. Processing responses...")
