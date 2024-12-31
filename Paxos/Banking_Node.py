@@ -12,6 +12,7 @@ from collections import defaultdict
 
 #node 1 = 10.151.101.173
 #node 2 = 10.151.101.45
+#node 3 = 10.151.101.253
 
 node_ip = "127.0.0.1"
 #registry_ip = 10.151.101.221
@@ -203,7 +204,7 @@ def send_propose_message(node_id, action):
     """
     Sends a Propose message to all acceptors with the value to be accepted.
     """
-    global active_nodes
+    global active_nodes, max_proposal
     propose_message = {
         "type": "propose",
         "proposal_number": max_proposal,
@@ -211,6 +212,7 @@ def send_propose_message(node_id, action):
     }
 
     print(f"Node {node_id} is sending Propose message with proposal number {max_proposal} and action {action}...")
+    already_broadcasted = {}
 
     for other_node_id, node_info in active_nodes.items():
         if str(other_node_id) == str(node_id):
@@ -229,6 +231,21 @@ def send_propose_message(node_id, action):
                 # Send the propose message
                 s.sendall(json.dumps(propose_message).encode())
 
+                #Wait for the response
+                response_data = s.recv(1024).decode()
+                response = json.loads(response_data)
+                responde_proposal = response.get("proposal_number")
+                response_action = response.get("action")
+
+                if responde_proposal== max_proposal:
+                    already_broadcasted[other_node_id] = True
+                    status = check_if_possible(response_action, BankingService(db_name=f"banking_node_{node_id}.db"))
+                    broadcast_verification_message(responde_proposal, status, node_id, response_action)
+                else:
+                    print("Proposal number is not the same")
+
+
+
         except (socket.error, json.JSONDecodeError) as e:
             print(f"Node {node_id} failed to send Propose message to {other_node_id}: {e}")
 
@@ -245,8 +262,8 @@ def broadcast_verification_message(proposal_number, status, node_id, action):
     }
 
     for other_node_id, node_info in active_nodes.items():
-        if str(other_node_id) == str(node_id):
-            continue
+        # if str(other_node_id) == str(node_id):
+        #     continue
         try:
             host = node_info['url'].split(":")[1].replace("/", "")
             port = 6000
@@ -492,6 +509,10 @@ def listen_for_messages(node_id, db_name):
                     if is_possible == "approved":
                         response = "approved"
                         print(f"Approved proposal {proposal_number}")
+                        #respond with the action
+                        response_to_proposer = {"proposal_number": proposal_number, "action": action}
+                        client_socket.send(json.dumps(response_to_proposer).encode())
+
                         broadcast_verification_message(proposal_number, "approved", node_id,action)
                 else:
                     response = "rejected"
