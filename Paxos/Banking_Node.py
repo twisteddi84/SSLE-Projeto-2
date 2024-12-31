@@ -386,18 +386,18 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
     print(f"Approvals: {approvals}, Rejections: {rejections}")
 
     #Verify the majority response action and add the malicious ones to the list
-    action_count = {}
+    action_count = defaultdict(int)
     for response in responses:
         action = response["action"]
-        if action not in action_count:
-            action_count[action] = 1
-        else:
-            action_count[action] += 1
+        action_count[action] += 1
 
+    # Determine the majority action
     majority_action = max(action_count, key=action_count.get)
-    for response in responses:
-        if response["action"] != majority_action:
-            malicious_nodes.append(response["node_id"])
+
+    # Identify malicious nodes
+    malicious_nodes = [
+        response["node_id"] for response in responses if response["action"] != majority_action
+    ]
     
     print(f"Majority action: {majority_action}")
     print(f"Malicious nodes: {malicious_nodes}")
