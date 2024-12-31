@@ -256,14 +256,14 @@ def listen_for_messages(node_id, db_name):
             response = ""
 
             # Check the type of the message
-            if message.get("action") == "learn":
-                print(f"Received Learn message from {addr}: {message}")
-                # Process a learning action
-                banking_service = BankingService(db_name=db_name)
-                perform_action(message["data"], banking_service)  # Apply the action
-                response = "learned"
+            # if message.get("action") == "learn":
+            #     print(f"Received Learn message from {addr}: {message}")
+            #     # Process a learning action
+            #     banking_service = BankingService(db_name=db_name)
+            #     perform_action(message["data"], banking_service)  # Apply the action
+            #     response = "learned"
 
-            elif message.get("type") == "prepare":
+            if message.get("type") == "prepare":
                 print(f"Received Prepare message from {addr}: {message}")
                 # Handle Paxos Prepare messages
                 proposal_number = message["proposal_number"]
