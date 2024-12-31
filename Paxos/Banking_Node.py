@@ -237,7 +237,12 @@ def send_propose_message(node_id, action):
                 responde_proposal = response.get("proposal_number")
                 response_action = response.get("action")
 
-                if responde_proposal== max_proposal:
+                if other_node_id not in already_broadcasted.keys():
+                    already_broadcasted[other_node_id] = False
+                
+            
+
+                if responde_proposal== max_proposal and not already_broadcasted[other_node_id]:
                     already_broadcasted[other_node_id] = True
                     status = check_if_possible(response_action, BankingService(db_name=f"banking_node_{node_id}.db"))
                     broadcast_verification_message(responde_proposal, status, node_id, response_action)
