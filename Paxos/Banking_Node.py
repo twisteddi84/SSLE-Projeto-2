@@ -289,51 +289,63 @@ def listen_for_broadcasts(node_id):
     server_socket.listen(5)
     print(f"Node {node_id} listening for broadcasts on port {port}...")
 
+    # Set a timeout for accepting connections (non-blocking mode)
+    server_socket.settimeout(1.0)  # 1 second timeout
+
     # Flag to stop listening after time expires
     stop_flag = [False]
 
+    # Start the timer to stop listening after WAIT_TIME seconds
+    timer = threading.Timer(10, stop_listening, [stop_flag])
+    timer.start()
+
     while not stop_flag[0]:  # Continue listening until time expires
-        client_socket, addr = server_socket.accept()  # Accept incoming connection
-        print(f"Received broadcast message from {addr}")
-
-        # Receive the message from the client
-        message_data = client_socket.recv(1024).decode()
         try:
-            message = json.loads(message_data)
-            print(f"Received broadcast message: {message}")
+            # Try to accept a connection (this will not block for more than the set timeout)
+            client_socket, addr = server_socket.accept()  # Accept incoming connection
+            print(f"Received broadcast message from {addr}")
 
-            if message.get("type") == "verify":
-                proposal_number = message["proposal_number"]
-                node_id_received = message["node_id"]
-                status = message["status"]
-                print(f"Node {node_id} received broadcast verification for proposal {proposal_number}")
+            # Receive the message from the client
+            message_data = client_socket.recv(1024).decode()
+            try:
+                message = json.loads(message_data)
+                print(f"Received broadcast message: {message}")
 
-                # Check if this is a new proposal number that we haven't started a timer for yet
-                if proposal_number not in proposal_start_time:
-                    # Start the timer for the new proposal number
-                    print(f"Starting timer for proposal {proposal_number}")
-                    proposal_start_time[proposal_number] = time.time()
+                if message.get("type") == "verify":
+                    proposal_number = message["proposal_number"]
+                    node_id_received = message["node_id"]
+                    status = message["status"]
+                    print(f"Node {node_id} received broadcast verification for proposal {proposal_number}")
 
-                    # Start the timer to stop listening after 10 seconds
-                    timer = threading.Timer(10, stop_listening, [stop_flag])
-                    timer.start()
+                    # Check if this is a new proposal number that we haven't started a timer for yet
+                    if proposal_number not in proposal_start_time:
+                        # Start the timer for the new proposal number
+                        print(f"Starting timer for proposal {proposal_number}")
+                        proposal_start_time[proposal_number] = time.time()
 
-                # Add the response to the list of responses for this proposal number
-                proposal_responses[proposal_number].append({
-                    "node_id": node_id_received,
-                    "status": status
-                })
+                    # Add the response to the list of responses for this proposal number
+                    proposal_responses[proposal_number].append({
+                        "node_id": node_id_received,
+                        "status": status
+                    })
 
-            else:
-                print(f"Received unexpected message type: {message.get('type')}")
-        
-        except json.JSONDecodeError:
-            print(f"Failed to decode broadcast message from {addr}. Ignoring.")
+                else:
+                    print(f"Received unexpected message type: {message.get('type')}")
+
+            except json.JSONDecodeError:
+                print(f"Failed to decode broadcast message from {addr}. Ignoring.")
+            except Exception as e:
+                print(f"Error processing broadcast message from {addr}: {e}")
+
+            finally:
+                client_socket.close()
+
+        except socket.timeout:
+            # Timeout reached, continue the loop to check stop flag
+            continue
         except Exception as e:
-            print(f"Error processing broadcast message from {addr}: {e}")
-        
-        finally:
-            client_socket.close()
+            print(f"Error accepting connection: {e}")
+            continue
 
     # After time expires, process the responses for each proposal
     for proposal_number, responses in proposal_responses.items():
