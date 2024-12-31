@@ -342,8 +342,7 @@ def listen_for_broadcasts(node_id):
             # Timeout reached, check if any proposals have expired
             expired_proposals = []  # Store expired proposals to delete after iteration
             for proposal_number, stop_flag_value in stop_flag.items():
-                print(f"Checking proposal {proposal_number} stop flag: {stop_flag_value}")
-                if stop_flag_value:
+                if stop_flag_value == False:
                     continue
                 else:
                     execute_proposal(proposal_number)
