@@ -257,6 +257,14 @@ def broadcast_verification_message(proposal_number, status, node_id):
         except (socket.error, json.JSONDecodeError) as e:
             print(f"Node {node_id} failed to send verification message to {other_node_id}: {e}")
 
+def stop_listening(stop_flag):
+    """
+    Function to stop listening after the time limit (10 seconds).
+    Sets a stop flag to True when the timer expires.
+    """
+    print("Time limit reached. Stopping the listener.")
+    stop_flag[0] = True
+
 def listen_for_broadcasts(node_id):
     """
     Function to listen for incoming broadcast verification messages from other nodes.
@@ -272,7 +280,6 @@ def listen_for_broadcasts(node_id):
 
     # Track the responses for each proposal number
     proposal_responses = defaultdict(list)  # proposal_number -> list of {node_id, status}
-    proposal_start_time = {}  # proposal_number -> start_time for waiting
 
     host = "0.0.0.0"
     port = 6000  # Use a different port for broadcast communication
@@ -282,8 +289,15 @@ def listen_for_broadcasts(node_id):
     server_socket.bind((host, port))
     server_socket.listen(5)
     print(f"Node {node_id} listening for broadcasts on port {port}...")
-    
-    while True:
+
+    # Flag to stop listening after time expires
+    stop_flag = [False]
+
+    # Start the timer to stop listening after WAIT_TIME seconds
+    timer = threading.Timer(WAIT_TIME, stop_listening, [stop_flag])
+    timer.start()
+
+    while not stop_flag[0]:  # Continue listening until time expires
         client_socket, addr = server_socket.accept()  # Accept incoming connection
         print(f"Received broadcast message from {addr}")
 
@@ -299,10 +313,6 @@ def listen_for_broadcasts(node_id):
                 status = message["status"]
                 print(f"Node {node_id} received broadcast verification for proposal {proposal_number}")
 
-                # Initialize start time for the proposal if it's the first message
-                if proposal_number not in proposal_start_time:
-                    proposal_start_time[proposal_number] = time.time()
-
                 # Add the response to the list of responses for this proposal number
                 proposal_responses[proposal_number].append({
                     "node_id": node_id_received,
@@ -312,10 +322,6 @@ def listen_for_broadcasts(node_id):
             else:
                 print(f"Received unexpected message type: {message.get('type')}")
         
-            # Send a response back to the node that sent the broadcast
-            # response = {"status": "verified", "proposal_number": proposal_number}
-            # client_socket.send(json.dumps(response).encode())
-
         except json.JSONDecodeError:
             print(f"Failed to decode broadcast message from {addr}. Ignoring.")
         except Exception as e:
@@ -324,27 +330,19 @@ def listen_for_broadcasts(node_id):
         finally:
             client_socket.close()
 
-        # Now check if we have exceeded the waiting time for any proposals
-        current_time = time.time()
-        for proposal_number, start_time in list(proposal_start_time.items()):
-            print(f"Checking proposal {proposal_number} for timeout...")
-            if current_time - start_time >= WAIT_TIME:
-                # Process the consensus calculation for this proposal
-                print(f"Waiting time for proposal {proposal_number} exceeded. Processing responses...")
+    # After 10 seconds, process the responses for each proposal
+    for proposal_number, responses in proposal_responses.items():
+        print(f"Processing responses for proposal {proposal_number}...")
 
-                valid_responses_count = sum(1 for res in proposal_responses[proposal_number] if res["status"] == "approved")
-                print(f"Proposal {proposal_number} has {valid_responses_count} valid responses.")
+        valid_responses_count = sum(1 for res in responses if res["status"] == "approved")
+        print(f"Proposal {proposal_number} has {valid_responses_count} valid responses.")
 
-                # Check if consensus is reached
-                if valid_responses_count >= threshold:
-                    print(f"Proposal {proposal_number} reached consensus. Enough valid responses received.")
-                    # Proceed with further logic after consensus
-                else:
-                    print(f"Proposal {proposal_number} did not reach consensus. Valid responses are below threshold.")
-
-                # Clear responses for this proposal as the wait time has expired
-                del proposal_responses[proposal_number]  # Stop collecting responses for this proposal
-                del proposal_start_time[proposal_number]  # Remove the start time for this proposal
+        # Check if consensus is reached
+        if valid_responses_count >= threshold:
+            print(f"Proposal {proposal_number} reached consensus. Enough valid responses received.")
+            # Proceed with further logic after consensus
+        else:
+            print(f"Proposal {proposal_number} did not reach consensus. Valid responses are below threshold.")
 
 def listen_for_messages(node_id, db_name):
     """
