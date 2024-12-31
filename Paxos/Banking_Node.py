@@ -232,7 +232,7 @@ def send_propose_message(node_id, action):
         except (socket.error, json.JSONDecodeError) as e:
             print(f"Node {node_id} failed to send Propose message to {other_node_id}: {e}")
 
-def broadcast_verification_message(proposal_number, status, node_id):
+def broadcast_verification_message(proposal_number, status, node_id, action):
     """
     Function to send a verification message to all other nodes.
     """
@@ -240,6 +240,7 @@ def broadcast_verification_message(proposal_number, status, node_id):
         "type": "verify",
         "proposal_number": proposal_number,
         "status": status,
+        "action": action,
         "node_id": node_id
     }
 
@@ -312,6 +313,7 @@ def listen_for_broadcasts(node_id):
                     proposal_number = message["proposal_number"]
                     node_id_received = message["node_id"]
                     status = message["status"]
+                    action = message["action"]
                     print(f"Node {node_id} received broadcast verification for proposal {proposal_number}")
 
                     # Check if this is a new proposal number that we haven't started a timer for yet
@@ -324,7 +326,8 @@ def listen_for_broadcasts(node_id):
                     # Add the response to the list of responses for this proposal number
                     proposal_responses[proposal_number].append({
                         "node_id": node_id_received,
-                        "status": status
+                        "status": status,
+                        "action": action
                     })
 
                 else:
@@ -345,7 +348,7 @@ def listen_for_broadcasts(node_id):
                 if stop_flag_value == False:
                     continue
                 else:
-                    execute_proposal(proposal_number)
+                    verify_proposal(proposal_number,active_nodes,proposal_responses)
                     expired_proposals.append(proposal_number)
 
             # Remove expired proposals from stop_flag after the iteration
@@ -355,8 +358,62 @@ def listen_for_broadcasts(node_id):
             print(f"Error accepting connection: {e}")
             continue
 
-def execute_proposal(proposal_number):
-    print(f"Executing proposal {proposal_number}...")
+def verify_proposal(proposal_number, active_nodes, proposal_responses):
+    """
+    Function to verify the proposal responses and check for BFT consensus.
+    """
+    global max_proposal
+    total_nodes = len(active_nodes)
+    f = (total_nodes - 1) // 3  # Maximum number of malicious nodes
+    threshold = 2 * f + 1  # Threshold for BFT consensus
+    malicious_nodes = []
+
+    print(f"Verifying proposal {proposal_number} responses...")
+
+    # Get the responses for this proposal number
+    responses = proposal_responses[proposal_number]
+
+    # Count the number of approvals and rejections
+    approvals = 0
+    rejections = 0
+
+    for response in responses:
+        if response["status"] == "approved":
+            approvals += 1
+        elif response["status"] == "rejected":
+            rejections += 1
+
+    print(f"Approvals: {approvals}, Rejections: {rejections}")
+
+    #Verify the majority response action and add the malicious ones to the list
+    action_count = {}
+    for response in responses:
+        action = response["action"]
+        if action not in action_count:
+            action_count[action] = 1
+        else:
+            action_count[action] += 1
+
+    majority_action = max(action_count, key=action_count.get)
+    for response in responses:
+        if response["action"] != majority_action:
+            malicious_nodes.append(response["node_id"])
+    
+    print(f"Majority action: {majority_action}")
+    print(f"Malicious nodes: {malicious_nodes}")
+
+    # Check if the proposal is approved by the threshold
+    if approvals >= threshold:
+        print(f"Proposal {proposal_number} is approved by the threshold of {threshold}.")
+        # Perform the action locally
+        # banking_service = BankingService(db_name=db_name)
+        # perform_action(action, banking_service)
+        # Send 'learn' message to all nodes
+        # send_learn_to_all_nodes(node_id, action)
+    else:
+        print(f"Proposal {proposal_number} is rejected by the threshold of {threshold}.")
+        # Send 'rejected' message to all nodes
+        # broadcast_verification_message(proposal_number, "rejected", node_id)
 
 def listen_for_messages(node_id, db_name):
     """
@@ -418,11 +475,11 @@ def listen_for_messages(node_id, db_name):
                     if is_possible == "approved":
                         response = "approved"
                         print(f"Approved proposal {proposal_number}")
-                        broadcast_verification_message(proposal_number, "approved", node_id)
+                        broadcast_verification_message(proposal_number, "approved", node_id,action)
                 else:
                     response = "rejected"
                     print(f"Rejected proposal {proposal_number} (not the highest)")
-                    broadcast_verification_message(proposal_number, "rejected", node_id)
+                    broadcast_verification_message(proposal_number, "rejected", node_id,action)
 
             else:
                 # Handle other messages, such as checking feasibility of actions
