@@ -428,10 +428,7 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
         print(f"Majority action: {majority_action}")
         print(f"Malicious nodes: {malicious_nodes}")
         # Perform the action locally
-        # banking_service = BankingService(db_name=db_name)
-        # perform_action(action, banking_service)
-        # Send 'learn' message to all nodes
-        # send_learn_to_all_nodes(node_id, action)
+        perform_action(majority_action, BankingService(db_name=f"banking_node_{node_id}.db"))
     else:
         print(f"Proposal {proposal_number} is rejected by the threshold of {threshold}.")
         # Send 'rejected' message to all nodes
@@ -678,6 +675,7 @@ def perform_action(action, banking_service):
         return
 
     action_type = action['action']
+    print(f"Performing action: {action}")
 
     try:
         if action_type == "deposit":
