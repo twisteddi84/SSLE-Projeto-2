@@ -257,13 +257,13 @@ def broadcast_verification_message(proposal_number, status, node_id):
         except (socket.error, json.JSONDecodeError) as e:
             print(f"Node {node_id} failed to send verification message to {other_node_id}: {e}")
 
-def stop_listening(stop_flag):
+def stop_listening(stop_flag, proposal_number):
     """
     Function to stop listening after the time limit (10 seconds).
     Sets a stop flag to True when the timer expires.
     """
     print("Time limit reached. Stopping the listener.")
-    stop_flag[0] = True
+    stop_flag[proposal_number] = True
 
 def listen_for_broadcasts(node_id):
     """
@@ -278,7 +278,6 @@ def listen_for_broadcasts(node_id):
 
     # Track the responses for each proposal number
     proposal_responses = defaultdict(list)  # proposal_number -> list of {node_id, status}
-    proposal_start_time = {}  # proposal_number -> start_time for waiting
 
     host = "0.0.0.0"
     port = 6000  # Use a different port for broadcast communication
@@ -292,11 +291,11 @@ def listen_for_broadcasts(node_id):
     # Set a timeout for accepting connections (non-blocking mode)
     server_socket.settimeout(1.0)  # 1 second timeout
 
-    # Flag to stop listening after time expires
-    stop_flag = [False]
+    # Flags to stop listening after time expires {proposal_number: stop_flag}
+    stop_flag = {}
 
 
-    while not stop_flag[0]:  # Continue listening until time expires
+    while True:  # Continue listening until time expires
         try:
             # Try to accept a connection (this will not block for more than the set timeout)
             client_socket, addr = server_socket.accept()  # Accept incoming connection
@@ -315,11 +314,10 @@ def listen_for_broadcasts(node_id):
                     print(f"Node {node_id} received broadcast verification for proposal {proposal_number}")
 
                     # Check if this is a new proposal number that we haven't started a timer for yet
-                    if proposal_number not in proposal_start_time:
-                        # Start the timer for the new proposal number
-                        print(f"Starting timer for proposal {proposal_number}")
-                        proposal_start_time[proposal_number] = time.time()
-                        timer = threading.Timer(10, stop_listening, [stop_flag])
+                    if proposal_number not in stop_flag:
+                        stop_flag[proposal_number] = False
+                        # Start a timer to stop listening after 10 seconds
+                        timer = threading.Thread(target=stop_listening, args=(stop_flag, proposal_number))
                         timer.start()
 
                     # Add the response to the list of responses for this proposal number
@@ -340,25 +338,19 @@ def listen_for_broadcasts(node_id):
                 client_socket.close()
 
         except socket.timeout:
-            # Timeout reached, continue the loop to check stop flag
-            continue
+            # Timeout reached, check if any proposals have expired
+            for proposal_number, stop_flag_value in stop_flag.items():
+                if stop_flag_value:
+                    continue
+                else:
+                    execute_proposal(proposal_number)
+                    del stop_flag[proposal_number]
         except Exception as e:
             print(f"Error accepting connection: {e}")
             continue
 
-    # After time expires, process the responses for each proposal
-    for proposal_number, responses in proposal_responses.items():
-        print(f"Processing responses for proposal {proposal_number}...")
-
-        valid_responses_count = sum(1 for res in responses if res["status"] == "approved")
-        print(f"Proposal {proposal_number} has {valid_responses_count} valid responses.")
-
-        # Check if consensus is reached
-        if valid_responses_count >= threshold:
-            print(f"Proposal {proposal_number} reached consensus. Enough valid responses received.")
-            # Proceed with further logic after consensus
-        else:
-            print(f"Proposal {proposal_number} did not reach consensus. Valid responses are below threshold.")
+def execute_proposal(proposal_number):
+    print(f"Executing proposal {proposal_number}...")
 
 def listen_for_messages(node_id, db_name):
     """
