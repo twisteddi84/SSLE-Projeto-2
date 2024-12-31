@@ -618,9 +618,9 @@ def register_with_registry(node_id):
             #send registration to active nodes
             if len(active_nodes) > 0:
                 send_registration_to_active_nodes(active_nodes, node_id, node_url)
-                active_nodes[node_id] = {"url": node_url, "reputation": 100}
+                active_nodes[int(node_id)] = {"url": node_url, "reputation": 100}
             else:
-                active_nodes[node_id] = {"url": node_url, "reputation": 100}
+                active_nodes[int(node_id)] = {"url": node_url, "reputation": 100}
         elif response.status_code == 200:
             print(f"Node {node_id} already registered with the registry.")
         else:
@@ -680,7 +680,7 @@ def listen_for_node_registrations():
             # Process the registration
             for node_id, node_details in registration_info.items():
                 if "url" in node_details and "reputation" in node_details:
-                    active_nodes[node_id] = {
+                    active_nodes[int(node_id)] = {
                         "url": node_details["url"],
                         "reputation": node_details["reputation"]
                     }
