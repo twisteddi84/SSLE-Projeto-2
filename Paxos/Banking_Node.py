@@ -340,13 +340,18 @@ def listen_for_broadcasts(node_id):
 
         except socket.timeout:
             # Timeout reached, check if any proposals have expired
+            expired_proposals = []  # Store expired proposals to delete after iteration
             for proposal_number, stop_flag_value in stop_flag.items():
                 print(f"Checking proposal {proposal_number} stop flag: {stop_flag_value}")
                 if stop_flag_value:
                     continue
                 else:
                     execute_proposal(proposal_number)
-                    del stop_flag[proposal_number]
+                    expired_proposals.append(proposal_number)
+
+            # Remove expired proposals from stop_flag after the iteration
+            for proposal_number in expired_proposals:
+                del stop_flag[proposal_number]
         except Exception as e:
             print(f"Error accepting connection: {e}")
             continue
