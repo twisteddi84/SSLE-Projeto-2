@@ -13,6 +13,8 @@ from collections import defaultdict
 #node 1 = 10.151.101.173
 #node 2 = 10.151.101.45
 #node 3 = 10.151.101.253
+#node 4 = 10.151.101.10
+#node 5 = 10.151.101.83
 
 node_ip = "127.0.0.1"
 #registry_ip = 10.151.101.221
@@ -212,7 +214,6 @@ def send_propose_message(node_id, action):
     }
 
     print(f"Node {node_id} is sending Propose message with proposal number {max_proposal} and action {action}...")
-    already_broadcasted = {}
 
     for other_node_id, node_info in active_nodes.items():
         if str(other_node_id) == str(node_id):
@@ -230,24 +231,6 @@ def send_propose_message(node_id, action):
 
                 # Send the propose message
                 s.sendall(json.dumps(propose_message).encode())
-
-                #Wait for the response
-                response_data = s.recv(1024).decode()
-                response = json.loads(response_data)
-                responde_proposal = response.get("proposal_number")
-                response_action = response.get("action")
-
-                if other_node_id not in already_broadcasted.keys():
-                    already_broadcasted[other_node_id] = False
-                
-            
-
-                if responde_proposal== max_proposal and not already_broadcasted[other_node_id]:
-                    already_broadcasted[other_node_id] = True
-                    status = check_if_possible(response_action, BankingService(db_name=f"banking_node_{node_id}.db"))
-                    broadcast_verification_message(responde_proposal, status, node_id, response_action)
-                else:
-                    print("Proposal number is not the same")
 
 
 
@@ -385,7 +368,7 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
     Function to verify the proposal responses and check for BFT consensus.
     """
     global max_proposal
-    total_nodes = len(active_nodes)
+    total_nodes = len(active_nodes) - 1 # Exclude the proposer node
     f = (total_nodes - 1) // 3  # Maximum number of malicious nodes
     threshold = 2 * f + 1  # Threshold for BFT consensus
     malicious_nodes = []
@@ -514,9 +497,6 @@ def listen_for_messages(node_id, db_name):
                     if is_possible == "approved":
                         response = "approved"
                         print(f"Approved proposal {proposal_number}")
-                        #respond with the action
-                        response_to_proposer = {"proposal_number": proposal_number, "action": action}
-                        client_socket.send(json.dumps(response_to_proposer).encode())
 
                         broadcast_verification_message(proposal_number, "approved", node_id,action)
                 else:
