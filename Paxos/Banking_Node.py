@@ -145,7 +145,7 @@ def send_prepare_message(node_id):
     print(f"Node {node_id} is sending Prepare message with proposal number {max_proposal}...")
 
     for other_node_id, node_info in active_nodes.items():
-        if int(other_node_id) == int(node_id):
+        if str(other_node_id) == str(node_id):
             continue  # Skip sending to itself
         
         try:
@@ -192,7 +192,7 @@ def send_propose_message(node_id, action):
     print(f"Node {node_id} is sending Propose message with proposal number {max_proposal} and action {action}...")
 
     for other_node_id, node_info in active_nodes.items():
-        if int(other_node_id) == int(node_id):
+        if str(other_node_id) == str(node_id):
             continue  # Skip sending to itself
         
         try:
@@ -397,14 +397,14 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
 
         # Identify malicious nodes
         malicious_nodes = [
-            response["node_id"] for response in responses
+            str(response["node_id"]) for response in responses
             if "action" not in response or dict(sorted(response["action"].items())) != majority_action
         ]
 
         #Append reject nodes to malicious nodes
         for response in responses:
             if response["status"] == "rejected":
-                malicious_nodes.append(response["node_id"])
+                malicious_nodes.append(str(response["node_id"]))
 
         print(f"Majority action: {majority_action}")
         print(f"Malicious nodes: {malicious_nodes}")
@@ -509,8 +509,8 @@ def listen_for_messages(node_id, db_name):
 def increase_reputation(node_id):
     """Increase the reputation of a node."""
     global active_nodes
-    active_nodes[node_id]['reputation'] += 10
-    print(f"Reputation increased for Node {node_id}. New reputation: {active_nodes[node_id]['reputation']}")
+    active_nodes[str(node_id)]['reputation'] += 10
+    print(f"Reputation increased for Node {node_id}. New reputation: {active_nodes[str(node_id)]['reputation']}")
     registry_url = f"http://{registry_ip}:5000/reputation/increase"
     try:
         response = requests.post(registry_url, json={"node_id": node_id})
@@ -524,8 +524,8 @@ def increase_reputation(node_id):
 def decrease_reputation(node_id):
     """Decrease the reputation of a node."""
     global active_nodes
-    active_nodes[node_id]['reputation'] -= 20
-    print(f"Reputation decreased for Node {node_id}. New reputation: {active_nodes[node_id]['reputation']}")
+    active_nodes[str(node_id)]['reputation'] -= 20
+    print(f"Reputation decreased for Node {node_id}. New reputation: {active_nodes[str(node_id)]['reputation']}")
     registry_url = f"http://{registry_ip}:5000/reputation/decrease"
     try:
         response = requests.post(registry_url, json={"node_id": node_id})
@@ -618,9 +618,9 @@ def register_with_registry(node_id):
             #send registration to active nodes
             if len(active_nodes) > 0:
                 send_registration_to_active_nodes(active_nodes, node_id, node_url)
-                active_nodes[int(node_id)] = {"url": node_url, "reputation": 100}
+                active_nodes[str(node_id)] = {"url": node_url, "reputation": 100}
             else:
-                active_nodes[int(node_id)] = {"url": node_url, "reputation": 100}
+                active_nodes[str(node_id)] = {"url": node_url, "reputation": 100}
         elif response.status_code == 200:
             print(f"Node {node_id} already registered with the registry.")
         else:
@@ -633,7 +633,7 @@ def send_registration_to_active_nodes(active_nodes, node_id, node_ip):
     Sends the registration information to all active nodes via socket communication.
     """
     for node in active_nodes:
-        if int(node) != int(node_id):
+        if str(node) != str(node_id):
             print(f"Adding Node {node} to the registry...")
             node_url = active_nodes[node]['url']
             if node_url:
@@ -680,7 +680,7 @@ def listen_for_node_registrations():
             # Process the registration
             for node_id, node_details in registration_info.items():
                 if "url" in node_details and "reputation" in node_details:
-                    active_nodes[int(node_id)] = {
+                    active_nodes[node_id] = {
                         "url": node_details["url"],
                         "reputation": node_details["reputation"]
                     }
