@@ -1,5 +1,4 @@
 import atexit
-import signal
 import sqlite3
 import json
 import socket
@@ -98,49 +97,26 @@ def menu(node_id):
             name = input("Enter account holder's name: ")
             initial_balance = float(input("Enter initial balance: "))
             action = {"action": "create_account", "name": name, "initial_balance": initial_balance}
-
-            total_nodes = len(active_nodes)
-
             if send_prepare_message(node_id):
-
                 #send propose message
                 send_propose_message(node_id, action)
-
-                # majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
-                # if majority_approval:
-                #     banking_service.create_account(name, initial_balance)
-                #     send_action_to_all_nodes(node_id, total_nodes, action)
 
         elif choice == "2":
             name = input("Enter account holder's name: ")
             amount = float(input("Enter amount to deposit: "))
             action = {"action": "deposit", "name": name, "amount": amount}
-
-            total_nodes = len(active_nodes)
-
             if send_prepare_message(node_id):
-
                 #send propose message
                 send_propose_message(node_id, action)
 
-                majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
-                if majority_approval:
-                    banking_service.deposit(name, amount)
-                    send_action_to_all_nodes(node_id, total_nodes, action)
 
         elif choice == "3":
             name = input("Enter account holder's name: ")
             amount = float(input("Enter amount to withdraw: "))
             action = {"action": "withdraw", "name": name, "amount": amount}
-
-            total_nodes = len(active_nodes)
-
             if send_prepare_message(node_id):
-
-                majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
-                if majority_approval:
-                    banking_service.withdraw(name, amount)
-                    send_action_to_all_nodes(node_id, total_nodes, action)
+                #send propose message
+                send_propose_message(node_id, action)
 
         elif choice == "4":
             name = input("Enter account holder's name: ")
@@ -405,6 +381,7 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
 
         for response in responses:
             if response["status"] == "rejected":
+                malicious_nodes.append(response["node_id"])
                 continue
             action = response["action"]
 
@@ -463,14 +440,6 @@ def listen_for_messages(node_id, db_name):
 
             response = ""
 
-            # Check the type of the message
-            # if message.get("action") == "learn":
-            #     print(f"Received Learn message from {addr}: {message}")
-            #     # Process a learning action
-            #     banking_service = BankingService(db_name=db_name)
-            #     perform_action(message["data"], banking_service)  # Apply the action
-            #     response = "learned"
-
             if message.get("type") == "prepare":
                 print(f"Received Prepare message from {addr}: {message}")
                 # Handle Paxos Prepare messages
@@ -491,11 +460,17 @@ def listen_for_messages(node_id, db_name):
                     action = message["action"]
                     banking_service = BankingService(db_name=db_name)
                     is_possible = check_if_possible(action, banking_service)
+                    if node_id == 4:
+                        is_possible = "rejected"
                     if is_possible == "approved":
                         response = "approved"
                         print(f"Approved proposal {proposal_number}")
 
                         broadcast_verification_message(proposal_number, "approved", node_id,action)
+                    else:
+                        response = "rejected"
+                        print(f"Rejected proposal {proposal_number} (not possible)")
+                        broadcast_verification_message(proposal_number, "rejected", node_id,action)
                 else:
                     response = "rejected"
                     print(f"Rejected proposal {proposal_number} (not the highest)")
@@ -516,127 +491,6 @@ def listen_for_messages(node_id, db_name):
 
         finally:
             client_socket.close()
-
-
-
-
-def wait_for_majority_approval(node_id, total_nodes, action):
-    """Wait for a majority of acceptors to approve the action using threading."""
-    approvals = 0
-    required_approvals = total_nodes // 2 + 1
-    responses = {}
-    lock = threading.Lock()
-
-    def request_approval(acceptor_id,acceptor_url):
-        """Send request and process the response."""
-        nonlocal approvals
-        responses[acceptor_id] = send_and_wait_for_response(acceptor_id, action,acceptor_url)
-        with lock:
-            #Node id 4 is always rejected
-            if responses[acceptor_id] == "approved":
-                approvals += 1
-
-            if acceptor_id == 4:
-                responses[acceptor_id] = "rejected"
-
-    # Thread to check the node's own action
-    def check_own_action():
-        responses[node_id] = check_if_possible(action, BankingService(db_name=f"banking_node_{node_id}.db"))
-        nonlocal approvals
-        if responses[node_id] == "approved":
-            with lock:
-                approvals += 1
-
-    # Start a thread for checking the local node's action
-    local_thread = threading.Thread(target=check_own_action)
-    local_thread.start()
-
-    threads = []
-    for acceptor_id in active_nodes.keys():
-        if int(acceptor_id) != node_id:
-            acceptor_url = active_nodes[acceptor_id]['url']
-            thread = threading.Thread(target=request_approval, args=(int(acceptor_id),acceptor_url))
-            threads.append(thread)
-            thread.start()
-
-    # Wait for all threads to finish
-    local_thread.join()  # Wait for the local thread to finish
-    for thread in threads:
-        thread.join()
-
-
-    #Just use the node_id each reputation is higher than 50
-    for node in active_nodes.keys():
-        if int(node) != node_id:
-            if active_nodes[node]['reputation'] < 50:
-                print(f"Node {node} reputation is lower than 50. Node {node} will be ignored.")
-                del responses[int(node)]
-                approvals -= 1
-
-    # Check if majority is reached
-    if approvals >= required_approvals:
-        print(f"Majority approved the action: {action}")
-        print(f"Responses: {responses}")
-        # Once majority is reached, execute the action locally and send 'learn'
-        send_learn_to_all_nodes(node_id, action)
-        # Increase reputation for the aproved nodes
-        for acceptor_id in responses.keys():
-            if responses[acceptor_id] == "approved":
-                increase_reputation(acceptor_id)
-        #Decrease reputation for the rejected nodes
-        for acceptor_id in responses.keys():
-            if responses[acceptor_id] == "rejected":
-                decrease_reputation(acceptor_id)
-        return True
-    
-    #Increase reputation for the rejected nodes
-    for acceptor_id in responses.keys():
-        if responses[acceptor_id] == "rejected":
-            increase_reputation(acceptor_id)
-    
-    #Decrease reputation for the approved nodes
-    for acceptor_id in responses.keys():
-        if responses[acceptor_id] == "approved":
-            decrease_reputation(acceptor_id)
-    
-
-    print(f"Action not approved by the majority. Responses: {responses}")
-    return False
-
-def send_and_wait_for_response(node_id, action,node_url ,timeout=15):
-    """
-    Send an action to a node and wait for the response with a timeout.
-    If the node doesn't respond within the timeout, assume rejection.
-    """
-    host = node_url.split(":")[1].replace("/", "")
-    port = int(node_url.split(":")[2])
-
-    try:
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.settimeout(timeout)  # Set the timeout in seconds
-        client_socket.connect((host, port))
-        client_socket.send(json.dumps(action).encode())
-
-        data = client_socket.recv(1024).decode()  # Wait for response
-        print(f"Received response from Node {node_id}: {data}")
-        client_socket.close()
-        return data  # Return 'approved' or 'rejected' based on the response
-
-    except (socket.timeout, ConnectionRefusedError):
-        # Handle timeout or unreachable node
-        print(f"Node {node_id} did not respond in time or is not reachable.")
-        return "rejected"
-
-    finally:
-        client_socket.close()
-
-
-def send_learn_to_all_nodes(node_id, action):
-    """Send the 'learn' message to all nodes to finalize the action."""
-
-    for node in active_nodes.keys():
-        if int(node) != node_id:
-            send_to_node(active_nodes[node]['url'], {"action": "learn", "data": action})
 
 def increase_reputation(node_id):
     """Increase the reputation of a node."""
@@ -666,7 +520,6 @@ def decrease_reputation(node_id):
             print(f"Failed to decrease reputation for Node {node_id}. Error: {response.text}")
     except requests.exceptions.RequestException as e:
         print(f"Error connecting to the registry: {e}")
-
 
 def perform_action(action, banking_service):
     """Perform the action on the local node using the shared banking service."""
@@ -703,24 +556,6 @@ def perform_action(action, banking_service):
         print(f"Error: Missing required parameter {str(e)} for action '{action_type}'.")
     except Exception as e:
         print(f"An error occurred while performing the action: {str(e)}")
-
-def send_action_to_all_nodes(node_id, total_nodes, action):
-    """Send the action to all other nodes for consensus."""
-    for node in active_nodes.keys():
-        if int(node) != node_id:
-            send_to_node(active_nodes[node]['url'], {"action": "learn", "data": action})
-
-def send_to_node(acceptor_url, action):
-    """Send an action to a specific node."""
-    host = acceptor_url.split(":")[1].replace("/", "")
-    port = int(acceptor_url.split(":")[2])
-    try:
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect((host, port))
-        client_socket.send(json.dumps(action).encode())
-        client_socket.close()
-    except ConnectionRefusedError:
-        print(f"Node {acceptor_url} is not reachable.")
 
 def check_if_possible(action, banking_service):
     """Check if the action is correct and possible to perform."""
