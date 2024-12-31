@@ -389,14 +389,22 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
     action_count = defaultdict(int)
     for response in responses:
         action = response["action"]
-        action_count[action] += 1
+
+        # Convert the action dictionary to a tuple of sorted key-value pairs for hashing
+        action_key = tuple(sorted(action.items()))
+
+        action_count[action_key] += 1
 
     # Determine the majority action
-    majority_action = max(action_count, key=action_count.get)
+    majority_action_key = max(action_count, key=action_count.get)
+
+    # Convert the majority action key back to a dictionary for comparison
+    majority_action = dict(majority_action_key)
 
     # Identify malicious nodes
     malicious_nodes = [
-        response["node_id"] for response in responses if response["action"] != majority_action
+        response["node_id"] for response in responses
+        if dict(sorted(response["action"].items())) != majority_action
     ]
     
     print(f"Majority action: {majority_action}")
