@@ -8,7 +8,13 @@ import time
 
 import requests
 
+from collections import defaultdict
+
+#node 1 = 10.151.101.173
+#node 2 = 10.151.101.45
+
 node_ip = "127.0.0.1"
+#registry_ip = 10.151.101.221
 registry_ip = "127.0.0.1"
 
 active_nodes = {}
@@ -226,6 +232,114 @@ def send_propose_message(node_id, action):
         except (socket.error, json.JSONDecodeError) as e:
             print(f"Node {node_id} failed to send Propose message to {other_node_id}: {e}")
 
+def broadcast_verification_message(proposal_number, status, node_id):
+    """
+    Function to send a verification message to all other nodes.
+    """
+    verification_message = {
+        "type": "verify",
+        "proposal_number": proposal_number,
+        "status": status,
+        "node_id": node_id
+    }
+
+    for other_node_id, node_info in active_nodes.items():
+        if str(other_node_id) == str(node_id):
+            continue
+        try:
+            host = node_info['url'].split(":")[1].replace("/", "")
+            port = node_info['url'].split(":")[2]
+            port = int(port)
+
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((host, port))
+                s.sendall(json.dumps(verification_message).encode())
+        except (socket.error, json.JSONDecodeError) as e:
+            print(f"Node {node_id} failed to send verification message to {other_node_id}: {e}")
+
+def listen_for_broadcasts(node_id):
+    """
+    Function to listen for incoming broadcast verification messages from other nodes.
+    This will handle the verification of proposals from other nodes and check for malicious nodes using BFT formula.
+    """
+    global active_nodes
+    total_nodes = len(active_nodes)
+
+    f = (total_nodes - 1) // 3  # Maximum number of malicious nodes
+    threshold = 2 * f + 1  # Threshold for BFT consensus
+
+    WAIT_TIME = 20  # Wait time in seconds for responses
+
+    # Track the responses for each proposal number
+    proposal_responses = defaultdict(list)  # proposal_number -> list of {node_id, status}
+
+    host = "0.0.0.0"
+    port = 6000  # Use a different port for broadcast communication
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    
+    # Bind to the port and start listening
+    server_socket.bind((host, port))
+    server_socket.listen(5)
+    print(f"Node {node_id} listening for broadcasts on port {port}...")
+    
+    start_time = time.time()  # Track start time for waiting for responses
+    while True:
+        client_socket, addr = server_socket.accept()  # Accept incoming connection
+        print(f"Received broadcast message from {addr}")
+
+        # Receive the message from the client
+        message_data = client_socket.recv(1024).decode()
+        try:
+            message = json.loads(message_data)
+            print(f"Received broadcast message: {message}")
+
+            if message.get("type") == "verify":
+                proposal_number = message["proposal_number"]
+                node_id_received = message["node_id"]
+                status = message["status"]
+                print(f"Node {node_id} received broadcast verification for proposal {proposal_number}")
+
+                # Add the response to the list of responses for this proposal number
+                proposal_responses[proposal_number].append({
+                    "node_id": node_id_received,
+                    "status": status
+                })
+
+                # Check if enough responses have been collected
+                if len(proposal_responses[proposal_number]) >= total_nodes - f:
+                    valid_responses_count = sum(1 for res in proposal_responses[proposal_number] if res["status"] == "approved")
+                    print(f"Proposal {proposal_number} has {valid_responses_count} valid responses.")
+
+                    # Check if consensus is reached
+                    if valid_responses_count >= threshold:
+                        print(f"Proposal {proposal_number} reached consensus. Enough valid responses received.")
+                        # Proceed with further logic after consensus
+
+                # Timeout or delay check to see if we should stop waiting
+                elapsed_time = time.time() - start_time
+                if elapsed_time >= WAIT_TIME:
+                    print(f"Waiting time exceeded. Proposal {proposal_number} processed with {len(proposal_responses[proposal_number])} responses.")
+                    # After waiting for 20 seconds, proceed with what we have or handle missing responses
+
+            else:
+                print(f"Received unexpected message type: {message.get('type')}")
+        
+            # Send a response back to the node that sent the broadcast
+            response = {"status": "verified", "proposal_number": proposal_number}
+            client_socket.send(json.dumps(response).encode())
+
+        except json.JSONDecodeError:
+            print(f"Failed to decode broadcast message from {addr}. Ignoring.")
+        except Exception as e:
+            print(f"Error processing broadcast message from {addr}: {e}")
+        
+        finally:
+            client_socket.close()
+
+        # Check if we have waited long enough for responses and process further if required
+        if time.time() - start_time >= WAIT_TIME:
+            break
+
 def listen_for_messages(node_id, db_name):
     """
     Function to listen for incoming connections from other nodes, handling actions and Paxos prepare messages.
@@ -286,9 +400,11 @@ def listen_for_messages(node_id, db_name):
                     if is_possible == "approved":
                         response = "approved"
                         print(f"Approved proposal {proposal_number}")
+                        broadcast_verification_message(proposal_number, "approved", node_id)
                 else:
                     response = "rejected"
                     print(f"Rejected proposal {proposal_number} (not the highest)")
+                    broadcast_verification_message(proposal_number, "rejected", node_id)
 
             else:
                 # Handle other messages, such as checking feasibility of actions
@@ -691,6 +807,11 @@ def start_banking_service(node_id):
     registry_thread = threading.Thread(target=listen_for_node_registrations)
     registry_thread.daemon = True
     registry_thread.start()
+
+    # Start the broadcast listener thread
+    broadcast_thread = threading.Thread(target=listen_for_broadcasts, args=(node_id,))
+    broadcast_thread.daemon = True
+    broadcast_thread.start()
 
     # Proceed with the menu and banking operations
     menu(node_id)
