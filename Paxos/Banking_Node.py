@@ -262,6 +262,7 @@ def stop_listening(stop_flag, proposal_number):
     Function to stop listening after the time limit (10 seconds).
     Sets a stop flag to True when the timer expires.
     """
+    time.sleep(10)
     print("Time limit reached. Stopping the listener.")
     stop_flag[proposal_number] = True
 
@@ -340,6 +341,7 @@ def listen_for_broadcasts(node_id):
         except socket.timeout:
             # Timeout reached, check if any proposals have expired
             for proposal_number, stop_flag_value in stop_flag.items():
+                print(f"Checking proposal {proposal_number} stop flag: {stop_flag_value}")
                 if stop_flag_value:
                     continue
                 else:
