@@ -94,10 +94,13 @@ def menu(node_id):
 
             if send_prepare_message(node_id):
 
-                majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
-                if majority_approval:
-                    banking_service.create_account(name, initial_balance)
-                    send_action_to_all_nodes(node_id, total_nodes, action)
+                #send propose message
+                send_propose_message(node_id, action)
+
+                # majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
+                # if majority_approval:
+                #     banking_service.create_account(name, initial_balance)
+                #     send_action_to_all_nodes(node_id, total_nodes, action)
 
         elif choice == "2":
             name = input("Enter account holder's name: ")
@@ -106,10 +109,15 @@ def menu(node_id):
 
             total_nodes = len(active_nodes)
 
-            majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
-            if majority_approval:
-                banking_service.deposit(name, amount)
-                send_action_to_all_nodes(node_id, total_nodes, action)
+            if send_prepare_message(node_id):
+
+                #send propose message
+                send_propose_message(node_id, action)
+
+                majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
+                if majority_approval:
+                    banking_service.deposit(name, amount)
+                    send_action_to_all_nodes(node_id, total_nodes, action)
 
         elif choice == "3":
             name = input("Enter account holder's name: ")
@@ -118,10 +126,12 @@ def menu(node_id):
 
             total_nodes = len(active_nodes)
 
-            majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
-            if majority_approval:
-                banking_service.withdraw(name, amount)
-                send_action_to_all_nodes(node_id, total_nodes, action)
+            if send_prepare_message(node_id):
+
+                majority_approval = wait_for_majority_approval(node_id, total_nodes, action)
+                if majority_approval:
+                    banking_service.withdraw(name, amount)
+                    send_action_to_all_nodes(node_id, total_nodes, action)
 
         elif choice == "4":
             name = input("Enter account holder's name: ")
@@ -137,8 +147,6 @@ def menu(node_id):
         else:
             print("Invalid choice. Please try again.")
 
-
-
 def send_prepare_message(node_id):
     """
     Sends a Prepare message to all other active nodes in the cluster using sockets.
@@ -147,7 +155,7 @@ def send_prepare_message(node_id):
     max_proposal += 1  # Increment global proposal number
     prepare_message = {"type": "prepare", "proposal_number": max_proposal}
     promises_received = 0
-    majority = (len(active_nodes) // 2) + 1  # Majority threshold
+    majority = ((len(active_nodes) - 1) // 2) + 1  # Majority threshold
 
     print(f"Node {node_id} is sending Prepare message with proposal number {max_proposal}...")
 
@@ -184,6 +192,120 @@ def send_prepare_message(node_id):
 
     print(f"Promises received: {promises_received}/{len(active_nodes) - 1} (Majority needed: {majority})")
     return promises_received >= majority
+
+def send_propose_message(node_id, action):
+    """
+    Sends a Propose message to all acceptors with the value to be accepted.
+    """
+    global active_nodes
+    propose_message = {
+        "type": "propose",
+        "proposal_number": max_proposal,
+        "action": action  # This is the value to be accepted
+    }
+
+    print(f"Node {node_id} is sending Propose message with proposal number {max_proposal} and action {action}...")
+
+    for other_node_id, node_info in active_nodes.items():
+        if str(other_node_id) == str(node_id):
+            continue  # Skip sending to itself
+        
+        try:
+            # Extract host and port from the node's URL
+            host = node_info['url'].split(":")[1].replace("/", "")
+            port = node_info['url'].split(":")[2]
+            port = int(port)
+
+            # Connect to the other node
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((host, port))
+
+                # Send the propose message
+                s.sendall(json.dumps(propose_message).encode())
+
+        except (socket.error, json.JSONDecodeError) as e:
+            print(f"Node {node_id} failed to send Propose message to {other_node_id}: {e}")
+
+def listen_for_messages(node_id, db_name):
+    """
+    Function to listen for incoming connections from other nodes, handling actions and Paxos prepare messages.
+    """
+
+    global max_proposal
+    host = "0.0.0.0"  # Listen on all interfaces
+    port = 5000
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    # Bind to the port and start listening
+    server_socket.bind((host, port))
+    server_socket.listen(5)
+    print(f"Node {node_id} listening on port {port}...")
+
+    # Track the highest prepare proposal number seen
+
+    while True:
+        client_socket, addr = server_socket.accept()  # Accept incoming connection
+        print(f"Connection from {addr} received.")
+
+        # Receive the message from the client
+        message_data = client_socket.recv(1024).decode()
+        try:
+            message = json.loads(message_data)
+            print(f"Received message: {message}")
+
+            response = ""
+
+            # Check the type of the message
+            if message.get("action") == "learn":
+                print(f"Received Learn message from {addr}: {message}")
+                # Process a learning action
+                banking_service = BankingService(db_name=db_name)
+                perform_action(message["data"], banking_service)  # Apply the action
+                response = "learned"
+
+            elif message.get("type") == "prepare":
+                print(f"Received Prepare message from {addr}: {message}")
+                # Handle Paxos Prepare messages
+                proposal_number = message["proposal_number"]
+                if proposal_number > max_proposal:
+                    max_proposal = proposal_number
+                    response = json.dumps({"status": "promise", "proposal_number": proposal_number})
+                    print(f"Promised proposal {proposal_number}")
+                else:
+                    response = json.dumps({"status": "reject", "proposal_number": proposal_number})
+                    print(f"Rejected proposal {proposal_number} (already promised {max_proposal})")
+            elif message.get("type") == "propose":
+                print(f"Received Propose message from {addr}: {message}")
+                # Handle Paxos Propose messages
+                proposal_number = message["proposal_number"]
+                if proposal_number == max_proposal:
+                    # Perform the action
+                    action = message["action"]
+                    banking_service = BankingService(db_name=db_name)
+                    is_possible = check_if_possible(action, banking_service)
+                    if is_possible == "approved":
+                        response = "approved"
+                        print(f"Approved proposal {proposal_number}")
+                else:
+                    response = "rejected"
+                    print(f"Rejected proposal {proposal_number} (not the highest)")
+
+            else:
+                # Handle other messages, such as checking feasibility of actions
+                banking_service = BankingService(db_name=db_name)
+                response = check_if_possible(message, banking_service)
+
+            # Send the response back to the sender
+            client_socket.send(response.encode())
+
+        except json.JSONDecodeError:
+            print(f"Failed to decode message from {addr}. Ignoring.")
+        except Exception as e:
+            print(f"Error processing message from {addr}: {e}")
+
+        finally:
+            client_socket.close()
+
 
 
 
@@ -270,6 +392,34 @@ def wait_for_majority_approval(node_id, total_nodes, action):
     print(f"Action not approved by the majority. Responses: {responses}")
     return False
 
+def send_and_wait_for_response(node_id, action,node_url ,timeout=15):
+    """
+    Send an action to a node and wait for the response with a timeout.
+    If the node doesn't respond within the timeout, assume rejection.
+    """
+    host = node_url.split(":")[1].replace("/", "")
+    port = int(node_url.split(":")[2])
+
+    try:
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.settimeout(timeout)  # Set the timeout in seconds
+        client_socket.connect((host, port))
+        client_socket.send(json.dumps(action).encode())
+
+        data = client_socket.recv(1024).decode()  # Wait for response
+        print(f"Received response from Node {node_id}: {data}")
+        client_socket.close()
+        return data  # Return 'approved' or 'rejected' based on the response
+
+    except (socket.timeout, ConnectionRefusedError):
+        # Handle timeout or unreachable node
+        print(f"Node {node_id} did not respond in time or is not reachable.")
+        return "rejected"
+
+    finally:
+        client_socket.close()
+
+
 def send_learn_to_all_nodes(node_id, action):
     """Send the 'learn' message to all nodes to finalize the action."""
 
@@ -306,32 +456,6 @@ def decrease_reputation(node_id):
     except requests.exceptions.RequestException as e:
         print(f"Error connecting to the registry: {e}")
 
-def send_and_wait_for_response(node_id, action,node_url ,timeout=15):
-    """
-    Send an action to a node and wait for the response with a timeout.
-    If the node doesn't respond within the timeout, assume rejection.
-    """
-    host = node_url.split(":")[1].replace("/", "")
-    port = int(node_url.split(":")[2])
-
-    try:
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.settimeout(timeout)  # Set the timeout in seconds
-        client_socket.connect((host, port))
-        client_socket.send(json.dumps(action).encode())
-
-        data = client_socket.recv(1024).decode()  # Wait for response
-        print(f"Received response from Node {node_id}: {data}")
-        client_socket.close()
-        return data  # Return 'approved' or 'rejected' based on the response
-
-    except (socket.timeout, ConnectionRefusedError):
-        # Handle timeout or unreachable node
-        print(f"Node {node_id} did not respond in time or is not reachable.")
-        return "rejected"
-
-    finally:
-        client_socket.close()
 
 def perform_action(action, banking_service):
     """Perform the action on the local node using the shared banking service."""
@@ -414,70 +538,6 @@ def check_if_possible(action, banking_service):
     except Exception as e:
         print(f"An error occurred while checking the action: {str(e)}")
         return "rejected"
-
-def listen_for_messages(node_id, db_name):
-    """
-    Function to listen for incoming connections from other nodes, handling actions and Paxos prepare messages.
-    """
-    host = "0.0.0.0"  # Listen on all interfaces
-    port = 5000
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    # Bind to the port and start listening
-    server_socket.bind((host, port))
-    server_socket.listen(5)
-    print(f"Node {node_id} listening on port {port}...")
-
-    # Track the highest prepare proposal number seen
-    highest_prepare_proposal = 0
-
-    while True:
-        client_socket, addr = server_socket.accept()  # Accept incoming connection
-        print(f"Connection from {addr} received.")
-
-        # Receive the message from the client
-        message_data = client_socket.recv(1024).decode()
-        try:
-            message = json.loads(message_data)
-            print(f"Received message: {message}")
-
-            response = ""
-
-            # Check the type of the message
-            if message.get("action") == "learn":
-                print(f"Received Learn message from {addr}: {message}")
-                # Process a learning action
-                banking_service = BankingService(db_name=db_name)
-                perform_action(message["data"], banking_service)  # Apply the action
-                response = "learned"
-
-            elif message.get("type") == "prepare":
-                print(f"Received Prepare message from {addr}: {message}")
-                # Handle Paxos Prepare messages
-                proposal_number = message["proposal_number"]
-                if proposal_number > highest_prepare_proposal:
-                    highest_prepare_proposal = proposal_number
-                    response = json.dumps({"status": "promise", "proposal_number": proposal_number})
-                    print(f"Promised proposal {proposal_number}")
-                else:
-                    response = json.dumps({"status": "reject", "proposal_number": proposal_number})
-                    print(f"Rejected proposal {proposal_number} (already promised {highest_prepare_proposal})")
-
-            else:
-                # Handle other messages, such as checking feasibility of actions
-                banking_service = BankingService(db_name=db_name)
-                response = check_if_possible(message, banking_service)
-
-            # Send the response back to the sender
-            client_socket.send(response.encode())
-
-        except json.JSONDecodeError:
-            print(f"Failed to decode message from {addr}. Ignoring.")
-        except Exception as e:
-            print(f"Error processing message from {addr}: {e}")
-
-        finally:
-            client_socket.close()
 
 def register_with_registry(node_id):
     """
