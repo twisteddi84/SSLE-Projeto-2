@@ -276,10 +276,9 @@ def listen_for_broadcasts(node_id):
     f = (total_nodes - 1) // 3  # Maximum number of malicious nodes
     threshold = 2 * f + 1  # Threshold for BFT consensus
 
-    WAIT_TIME = 10  # Wait time in seconds for responses
-
     # Track the responses for each proposal number
     proposal_responses = defaultdict(list)  # proposal_number -> list of {node_id, status}
+    proposal_start_time = {}  # proposal_number -> start_time for waiting
 
     host = "0.0.0.0"
     port = 6000  # Use a different port for broadcast communication
@@ -292,10 +291,6 @@ def listen_for_broadcasts(node_id):
 
     # Flag to stop listening after time expires
     stop_flag = [False]
-
-    # Start the timer to stop listening after WAIT_TIME seconds
-    timer = threading.Timer(WAIT_TIME, stop_listening, [stop_flag])
-    timer.start()
 
     while not stop_flag[0]:  # Continue listening until time expires
         client_socket, addr = server_socket.accept()  # Accept incoming connection
@@ -312,6 +307,16 @@ def listen_for_broadcasts(node_id):
                 node_id_received = message["node_id"]
                 status = message["status"]
                 print(f"Node {node_id} received broadcast verification for proposal {proposal_number}")
+
+                # Check if this is a new proposal number that we haven't started a timer for yet
+                if proposal_number not in proposal_start_time:
+                    # Start the timer for the new proposal number
+                    print(f"Starting timer for proposal {proposal_number}")
+                    proposal_start_time[proposal_number] = time.time()
+
+                    # Start the timer to stop listening after 10 seconds
+                    timer = threading.Timer(10, stop_listening, [stop_flag])
+                    timer.start()
 
                 # Add the response to the list of responses for this proposal number
                 proposal_responses[proposal_number].append({
@@ -330,7 +335,7 @@ def listen_for_broadcasts(node_id):
         finally:
             client_socket.close()
 
-    # After 10 seconds, process the responses for each proposal
+    # After time expires, process the responses for each proposal
     for proposal_number, responses in proposal_responses.items():
         print(f"Processing responses for proposal {proposal_number}...")
 
