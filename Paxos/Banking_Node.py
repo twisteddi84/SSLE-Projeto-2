@@ -268,7 +268,7 @@ def listen_for_broadcasts(node_id):
     f = (total_nodes - 1) // 3  # Maximum number of malicious nodes
     threshold = 2 * f + 1  # Threshold for BFT consensus
 
-    WAIT_TIME = 10  # Wait time in seconds for responses (changed to 10 seconds)
+    WAIT_TIME = 10  # Wait time in seconds for responses
 
     # Track the responses for each proposal number
     proposal_responses = defaultdict(list)  # proposal_number -> list of {node_id, status}
@@ -313,8 +313,8 @@ def listen_for_broadcasts(node_id):
                 print(f"Received unexpected message type: {message.get('type')}")
         
             # Send a response back to the node that sent the broadcast
-            response = {"status": "verified", "proposal_number": proposal_number}
-            client_socket.send(json.dumps(response).encode())
+            # response = {"status": "verified", "proposal_number": proposal_number}
+            # client_socket.send(json.dumps(response).encode())
 
         except json.JSONDecodeError:
             print(f"Failed to decode broadcast message from {addr}. Ignoring.")
@@ -325,8 +325,9 @@ def listen_for_broadcasts(node_id):
             client_socket.close()
 
         # Now check if we have exceeded the waiting time for any proposals
+        current_time = time.time()
         for proposal_number, start_time in list(proposal_start_time.items()):
-            if time.time() - start_time >= WAIT_TIME:
+            if current_time - start_time >= WAIT_TIME:
                 # Process the consensus calculation for this proposal
                 print(f"Waiting time for proposal {proposal_number} exceeded. Processing responses...")
 
