@@ -2,6 +2,7 @@ import atexit
 import sqlite3
 import json
 import socket
+import sys
 import threading
 import time
 
@@ -739,6 +740,7 @@ def perform_action(action, banking_service):
 def check_if_possible(action, banking_service):
     """Check if the action is correct and possible to perform."""
     print("Sleeping for 10 seconds to simulate processing time...")
+    print("USING BANKING NODE V2")
     time.sleep(10)
     if 'action' not in action:
         return "rejected"
@@ -933,6 +935,9 @@ def start_banking_service(node_id):
 
 
 if __name__ == "__main__":
-    node_id = int(input("Enter your node ID: "))  # Node ID
+    if len(sys.argv) != 2:
+        node_id = int(input("Enter the node ID: "))
+    else:
+        node_id = int(sys.argv[1])  # Get node ID from the command-line argument
 
     start_banking_service(node_id)
