@@ -339,12 +339,28 @@ def listen_for_broadcasts(node_id):
             print(f"Error accepting connection: {e}")
             continue
 
+
+def get_reputation(node_id):
+    """
+    Get the reputation of a node from the active nodes dictionary.
+    """
+    global active_nodes
+    return active_nodes[str(node_id)]['reputation'] if str(node_id) in active_nodes else 0
+
 def verify_proposal(proposal_number, active_nodes, proposal_responses):
     """
     Function to verify the proposal responses and check for BFT consensus.
     """
     global max_proposal
-    total_nodes = len(active_nodes) - 1 # Exclude the proposer node
+
+    #Remove nodes under 50 reputation
+    valid_responses = [
+        response for response in proposal_responses[proposal_number]
+        if "node_id" in response and get_reputation(response["node_id"]) >= 50
+    ]
+
+
+    total_nodes = len(valid_responses) - 1 # Exclude the proposer node
     f = (total_nodes - 1) // 3  # Maximum number of malicious nodes
     threshold = 2 * f + 1  # Threshold for BFT consensus
     malicious_nodes = []
