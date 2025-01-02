@@ -521,7 +521,6 @@ def listen_for_learn_messages(node_id):
                 if message.get("type") == "learn":
                     proposal_number = message["proposal_number"]
                     node_id_received = message["node_id"]
-                    status = message["status"]
                     action = message["action"]
                     print(f"Node {node_id} received broadcast verification for proposal {proposal_number}")
 
@@ -535,7 +534,6 @@ def listen_for_learn_messages(node_id):
                     # Add the response to the list of responses for this proposal number
                     proposal_responses[proposal_number].append({
                         "node_id": node_id_received,
-                        "status": status,
                         "action": action
                     })
 
