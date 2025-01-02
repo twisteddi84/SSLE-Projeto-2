@@ -187,6 +187,7 @@ def send_propose_message(node_id, action):
         "type": "propose",
         "proposal_number": max_proposal,
         "action": action,
+        "proposer_id": node_id
 
     }
 
@@ -471,7 +472,7 @@ def send_learn_message(proposer_id, proposal_number, action, node_id):
 
     try:
         host = proposer_info['url'].split(":")[1].replace("/", "")
-        port = int(proposer_info['url'].split(":")[2])
+        port = 7000
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect((host, port))
             s.sendall(json.dumps(learn_message).encode())
