@@ -573,7 +573,7 @@ def listen_for_learn_messages(node_id):
                                 else:
                                     print(f"Reputation decreased for Node {node}.")
                                     decrease_reputation(node)
-                            print("Nodes from registry: ", get_nodes())
+                            print("Final list of active nodes: ", active_nodes)
                         else:
                             print(f"Inconsistent actions for proposal {proposal_number}: {actions}")
 

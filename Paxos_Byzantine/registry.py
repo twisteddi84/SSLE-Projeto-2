@@ -70,9 +70,11 @@ def increase_reputation():
     Endpoint to increase a node's reputation.
     Expects JSON payload: { "node_id": <str>, "amount": <int> }
     """
+    global node_registry
     data = request.json
     node_id = data.get("node_id")
     amount = data.get("amount", 10)  # Default increase amount is 10
+    node_id = str(node_id)
 
     if not node_id or node_id not in node_registry:
         return jsonify({"error": f"Node {node_id} is not registered."}), 404
@@ -93,9 +95,11 @@ def decrease_reputation():
     Endpoint to decrease a node's reputation.
     Expects JSON payload: { "node_id": <str>, "amount": <int> }
     """
+    global node_registry
     data = request.json
     node_id = data.get("node_id")
     amount = data.get("amount", 20)  # Default decrease amount is 10
+    node_id = str(node_id)
 
     if not node_id or node_id not in node_registry:
         return jsonify({"error": f"Node {node_id} is not registered."}), 404
