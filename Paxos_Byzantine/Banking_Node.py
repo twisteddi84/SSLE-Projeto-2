@@ -365,8 +365,9 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
         if "node_id" in response and get_reputation(response["node_id"]) >= 50
     ]
 
+    print("Print total nodes: ", valid_responses)
 
-    total_nodes = len(valid_responses) - 1 # Exclude the proposer node
+    total_nodes = len(valid_responses) # Exclude the proposer node
     f = (total_nodes - 1) // 3  # Maximum number of malicious nodes
     threshold = 2 * f + 1  # Threshold for BFT consensus
     malicious_nodes = []
@@ -430,6 +431,9 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
 
         print(f"Majority action: {majority_action}")
         print(f"Malicious nodes: {malicious_nodes}")
+
+        send_learn_message(response["proposer_id"], proposal_number, majority_action, node_id)
+
         # Perform the action locally
         perform_action(majority_action, BankingService(db_name=f"banking_node_{node_id}.db"))
 
@@ -446,6 +450,128 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
         print(f"Proposal {proposal_number} is rejected by the threshold of {threshold}.")
         # Send 'rejected' message to all nodes
         # broadcast_verification_message(proposal_number, "rejected", node_id)
+
+def send_learn_message(proposer_id, proposal_number, action, node_id):
+    """
+    Sends a 'learn' message to the proposer node with the result of the proposal.
+    """
+    learn_message = {
+        "type": "learn",
+        "proposal_number": proposal_number,
+        "action": action,
+        "node_id": node_id
+    }
+
+    proposer_info = active_nodes.get(proposer_id)
+    if not proposer_info:
+        print(f"Proposer {proposer_id} not found in active nodes.")
+        return
+
+    try:
+        host = proposer_info['url'].split(":")[1].replace("/", "")
+        port = int(proposer_info['url'].split(":")[2])
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((host, port))
+            s.sendall(json.dumps(learn_message).encode())
+            print(f"Learn message sent to proposer {proposer_id}.")
+    except (socket.error, json.JSONDecodeError) as e:
+        print(f"Failed to send learn message to proposer {proposer_id}: {e}")
+
+def listen_for_learn_messages(node_id):
+    """
+    Function to listen for incoming 'learn' messages from other nodes.
+    This will update the local database with the learned values.
+    """
+    host = "0.0.0.0"
+    port = 7000  # Use a different port for broadcast communication
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    # Bind to the port and start listening
+    server_socket.bind((host, port))
+    server_socket.listen(5)
+    print(f"Node {node_id} listening for Learning on port {port}...")
+
+    # Set a timeout for accepting connections (non-blocking mode)
+    server_socket.settimeout(1.0)  # 1 second timeout
+
+    # Flags to stop listening after time expires {proposal_number: stop_flag}
+    stop_flag = {}
+
+    proposal_responses = defaultdict(list)  # proposal_number -> list of {node_id, status}
+
+    while True:  # Continue listening until time expires
+        try:
+            # Try to accept a connection (this will not block for more than the set timeout)
+            client_socket, addr = server_socket.accept()  # Accept incoming connection
+            print(f"Received Learn message from {addr}")
+
+            # Receive the message from the client
+            message_data = client_socket.recv(1024).decode()
+            try:
+                message = json.loads(message_data)
+                print(f"Received Learn message: {message}")
+
+                if message.get("type") == "learn":
+                    proposal_number = message["proposal_number"]
+                    node_id_received = message["node_id"]
+                    status = message["status"]
+                    action = message["action"]
+                    print(f"Node {node_id} received broadcast verification for proposal {proposal_number}")
+
+                    # Check if this is a new proposal number that we haven't started a timer for yet
+                    if proposal_number not in stop_flag:
+                        stop_flag[proposal_number] = False
+                        # Start a timer to stop listening after 10 seconds
+                        timer = threading.Thread(target=stop_listening, args=(stop_flag, proposal_number))
+                        timer.start()
+
+                    # Add the response to the list of responses for this proposal number
+                    proposal_responses[proposal_number].append({
+                        "node_id": node_id_received,
+                        "status": status,
+                        "action": action
+                    })
+
+                else:
+                    print(f"Received unexpected message type: {message.get('type')}")
+
+            except json.JSONDecodeError:
+                print(f"Failed to decode broadcast message from {addr}. Ignoring.")
+            except Exception as e:
+                print(f"Error processing broadcast message from {addr}: {e}")
+
+            finally:
+                client_socket.close()
+
+        except socket.timeout:
+            # Timeout reached, check if any proposals have expired
+            expired_proposals = []  # Store expired proposals to delete after iteration
+            for proposal_number, stop_flag_value in stop_flag.items():
+                if stop_flag_value == False:
+                    continue
+                else:
+                    responses = proposal_responses[proposal_number]
+                    if responses:
+                        # Collect all actions for this proposal_number
+                        actions = [response["action"] for response in responses]
+
+                        # Check if all actions are the same
+                        if all(action == actions[0] for action in actions):
+                            action = actions[0]
+                            perform_action(action, BankingService(db_name=f"banking_node_{node_id}.db"))
+                        else:
+                            print(f"Inconsistent actions for proposal {proposal_number}: {actions}")
+
+                    expired_proposals.append(proposal_number)
+
+            # Remove expired proposals from stop_flag after the iteration
+            for proposal_number in expired_proposals:
+                del stop_flag[proposal_number]
+        except Exception as e:
+            print(f"Error accepting connection: {e}")
+            continue
+
+
 
 def listen_for_messages(node_id, db_name):
     """
@@ -536,7 +662,7 @@ def increase_reputation(node_id):
     print(f"Reputation increased for Node {node_id}. New reputation: {active_nodes[str(node_id)]['reputation']}")
     registry_url = f"http://{registry_ip}:5000/reputation/increase"
     try:
-        response = requests.post(registry_url, json={"node_id": node_id})
+        response = requests.post(registry_url, json={"node_id": str(node_id)})
         if response.status_code == 200:
             print(f"Reputation increased for Node {node_id}.")
         else:
@@ -781,6 +907,11 @@ def start_banking_service(node_id):
     broadcast_thread = threading.Thread(target=listen_for_broadcasts, args=(node_id,))
     broadcast_thread.daemon = True
     broadcast_thread.start()
+
+    # Start the learn listener thread
+    learn_thread = threading.Thread(target=listen_for_learn_messages, args=(node_id,))
+    learn_thread.daemon = True
+    learn_thread.start()
 
     # Proceed with the menu and banking operations
     menu(node_id)
