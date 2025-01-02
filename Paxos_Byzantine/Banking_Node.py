@@ -457,7 +457,11 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
 def send_learn_message(proposer_id, proposal_number, action, node_id):
     """
     Sends a 'learn' message to the proposer node with the result of the proposal.
+    
     """
+
+    global active_nodes
+
     learn_message = {
         "type": "learn",
         "proposal_number": proposal_number,
@@ -465,7 +469,7 @@ def send_learn_message(proposer_id, proposal_number, action, node_id):
         "node_id": node_id
     }
 
-    proposer_info = active_nodes.get(proposer_id)
+    proposer_info = active_nodes.get(str(proposer_id))
     if not proposer_info:
         print(f"Proposer {proposer_id} not found in active nodes.")
         return
