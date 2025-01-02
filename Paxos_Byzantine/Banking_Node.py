@@ -435,7 +435,7 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
         print(f"Majority action: {majority_action}")
         print(f"Malicious nodes: {malicious_nodes}")
 
-        send_learn_message(response["proposer_id"], proposal_number, majority_action, node_id)
+        send_learn_message(response["proposer_id"], proposal_number, majority_action, node_id, malicious_nodes)
 
         # Perform the action locally
         perform_action(majority_action, BankingService(db_name=f"banking_node_{node_id}.db"))
@@ -454,7 +454,7 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
         # Send 'rejected' message to all nodes
         # broadcast_verification_message(proposal_number, "rejected", node_id)
 
-def send_learn_message(proposer_id, proposal_number, action, node_id):
+def send_learn_message(proposer_id, proposal_number, action, node_id, malicious_nodes):
     """
     Sends a 'learn' message to the proposer node with the result of the proposal.
     
@@ -466,7 +466,8 @@ def send_learn_message(proposer_id, proposal_number, action, node_id):
         "type": "learn",
         "proposal_number": proposal_number,
         "action": action,
-        "node_id": node_id
+        "node_id": node_id,
+        "malicious_nodes": malicious_nodes
     }
 
     proposer_info = active_nodes.get(str(proposer_id))
@@ -522,7 +523,7 @@ def listen_for_learn_messages(node_id):
                     proposal_number = message["proposal_number"]
                     node_id_received = message["node_id"]
                     action = message["action"]
-                    print(f"Node {node_id} received broadcast verification for proposal {proposal_number}")
+                    malicious_nodes = message["malicious_nodes"]
 
                     # Check if this is a new proposal number that we haven't started a timer for yet
                     if proposal_number not in stop_flag:
@@ -564,6 +565,15 @@ def listen_for_learn_messages(node_id):
                         if all(action == actions[0] for action in actions):
                             action = actions[0]
                             perform_action(action, BankingService(db_name=f"banking_node_{node_id}.db"))
+                            # Increase reputation for non-malicious nodes
+                            for node in active_nodes:
+                                if node not in malicious_nodes:
+                                    print(f"Reputation increased for Node {node}.")
+                                    increase_reputation(node)
+                                else:
+                                    print(f"Reputation decreased for Node {node}.")
+                                    decrease_reputation(node)
+                            print("Nodes from registry: ", get_nodes())
                         else:
                             print(f"Inconsistent actions for proposal {proposal_number}: {actions}")
 
