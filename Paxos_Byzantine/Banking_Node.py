@@ -187,7 +187,6 @@ def send_propose_message(node_id, action):
         "type": "propose",
         "proposal_number": max_proposal,
         "action": action,
-        "proposer_id": node_id  # This is the value to be accepted
 
     }
 
@@ -224,7 +223,8 @@ def broadcast_verification_message(proposal_number, status, node_id, action, pro
         "proposal_number": proposal_number,
         "status": status,
         "action": action,
-        "node_id": node_id
+        "node_id": node_id,
+        "proposer_id": proposer_id
     }
 
     for other_node_id, node_info in active_nodes.items():
@@ -301,6 +301,7 @@ def listen_for_broadcasts(node_id):
                     node_id_received = message["node_id"]
                     status = message["status"]
                     action = message["action"]
+                    proposer_id = message["proposer_id"]
                     print(f"Node {node_id} received broadcast verification for proposal {proposal_number}")
 
                     # Check if this is a new proposal number that we haven't started a timer for yet
@@ -314,7 +315,8 @@ def listen_for_broadcasts(node_id):
                     proposal_responses[proposal_number].append({
                         "node_id": node_id_received,
                         "status": status,
-                        "action": action
+                        "action": action,
+                        "proposer_id": proposer_id
                     })
 
                 else:
