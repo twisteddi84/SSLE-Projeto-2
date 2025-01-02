@@ -186,7 +186,9 @@ def send_propose_message(node_id, action):
     propose_message = {
         "type": "propose",
         "proposal_number": max_proposal,
-        "action": action  # This is the value to be accepted
+        "action": action,
+        "proposer_id": node_id  # This is the value to be accepted
+
     }
 
     print(f"Node {node_id} is sending Propose message with proposal number {max_proposal} and action {action}...")
@@ -213,9 +215,9 @@ def send_propose_message(node_id, action):
         except (socket.error, json.JSONDecodeError) as e:
             print(f"Node {node_id} failed to send Propose message to {other_node_id}: {e}")
 
-def broadcast_verification_message(proposal_number, status, node_id, action):
+def broadcast_verification_message(proposal_number, status, node_id, action, proposer_id):
     """
-    Function to send a verification message to all other nodes.
+    Function to send a verification message to all other nodes except the proposer.
     """
     verification_message = {
         "type": "verify",
@@ -226,11 +228,15 @@ def broadcast_verification_message(proposal_number, status, node_id, action):
     }
 
     for other_node_id, node_info in active_nodes.items():
-        # if str(other_node_id) == str(node_id):
-        #     continue
+        # Skip the proposer node
+        if str(other_node_id) == str(proposer_id):
+            print(f"Skipping proposer Node {proposer_id}.")
+            continue
+
         try:
+            # Extract host and port from the node's URL
             host = node_info['url'].split(":")[1].replace("/", "")
-            port = 6000
+            port = 6000  # Adjust this to the correct port if needed
             port = int(port)
 
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -367,8 +373,8 @@ def verify_proposal(proposal_number, active_nodes, proposal_responses):
 
     print(f"Verifying proposal {proposal_number} responses...")
 
-    if total_nodes < 4:
-        print(f"Insufficient nodes for BFT consensus. Minimum 4 nodes required, but {total_nodes} found.")
+    if total_nodes < 3:
+        print(f"Insufficient nodes for BFT consensus. Minimum 3 nodes required, but {total_nodes} found.")
         return
 
     # Get the responses for this proposal number
@@ -485,6 +491,7 @@ def listen_for_messages(node_id, db_name):
                 print(f"Received Propose message from {addr}: {message}")
                 # Handle Paxos Propose messages
                 proposal_number = message["proposal_number"]
+                proposer_id = message["proposer_id"]
                 if proposal_number == max_proposal:
                     # Perform the action
                     action = message["action"]
@@ -496,15 +503,15 @@ def listen_for_messages(node_id, db_name):
                         response = "approved"
                         print(f"Approved proposal {proposal_number}")
 
-                        broadcast_verification_message(proposal_number, "approved", node_id,action)
+                        broadcast_verification_message(proposal_number, "approved", node_id,action, proposer_id)
                     else:
                         response = "rejected"
                         print(f"Rejected proposal {proposal_number} (not possible)")
-                        broadcast_verification_message(proposal_number, "rejected", node_id,action)
+                        broadcast_verification_message(proposal_number, "rejected", node_id,action, proposer_id)
                 else:
                     response = "rejected"
                     print(f"Rejected proposal {proposal_number} (not the highest)")
-                    broadcast_verification_message(proposal_number, "rejected", node_id,action)
+                    broadcast_verification_message(proposal_number, "rejected", node_id,action, proposer_id)
 
             else:
                 # Handle other messages, such as checking feasibility of actions
