@@ -15,6 +15,7 @@ def register_node():
     data = request.json
     node_id = data.get("node_id")
     node_url = data.get("node_url")
+    node_id = str(node_id)
 
     if not node_id or not node_url:
         return jsonify({"error": "Node ID and URL are required"}), 400
@@ -75,6 +76,10 @@ def increase_reputation():
     node_id = data.get("node_id")
     amount = data.get("amount", 10)  # Default increase amount is 10
     node_id = str(node_id)
+
+    print(node_id)
+    print(type(node_id))
+    print(node_registry)
 
     if not node_id or node_id not in node_registry:
         return jsonify({"error": f"Node {node_id} is not registered."}), 404
