@@ -896,9 +896,9 @@ def get_reputation_from_registry(node_id):
     """
     Get the reputation of the current node from the registry.
     """
-    registry_url = f"http://{registry_ip}:5000/reputation"
+    registry_url = f"http://{registry_ip}:5000/reputation/{node_id}"  # Use path for node_id
     try:
-        response = requests.get(registry_url, params={"node_id": node_id})
+        response = requests.get(registry_url)  # No need for params, as node_id is part of the URL
         if response.status_code == 200:
             return response.json().get("reputation", 0)
         else:

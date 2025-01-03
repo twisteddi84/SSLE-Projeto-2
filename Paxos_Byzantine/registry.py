@@ -78,10 +78,6 @@ def increase_reputation():
     amount = data.get("amount", 10)  # Default increase amount is 10
     node_id = str(node_id)
 
-    print(node_id)
-    print(type(node_id))
-    print(node_registry)
-
     if not node_id or node_id not in node_registry:
         return jsonify({"error": f"Node {node_id} is not registered."}), 404
 
@@ -119,6 +115,7 @@ def get_reputation(node_id):
     """
     Endpoint to get the reputation of a node.
     """
+    global node_registry
     node_id = str(node_id)
     if node_id not in node_registry:
         return jsonify({"error": f"Node {node_id} is not registered."}), 404
