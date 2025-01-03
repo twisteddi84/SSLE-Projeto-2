@@ -778,7 +778,7 @@ def register_with_registry(node_id):
     
     try:
         response = requests.post(registry_url, json={"node_id": node_id, "node_url": node_url})
-        if response.status_code == 201:
+        if response.status_code == 201 or response.status_code == 200:
             print(f"Node {node_id} registered successfully with the registry.")
             active_nodes = get_nodes()
             #send registration to active nodes
