@@ -58,6 +58,7 @@ def deregister_node():
         return jsonify({"error": "Invalid request. 'node_id' is required."}), 400
 
     node_id = data["node_id"]
+    node_id = str(node_id)
     if node_id not in node_registry:
         return jsonify({"error": f"Node {node_id} is not registered."}), 404
 
@@ -118,6 +119,7 @@ def get_reputation(node_id):
     """
     Endpoint to get the reputation of a node.
     """
+    node_id = str(node_id)
     if node_id not in node_registry:
         return jsonify({"error": f"Node {node_id} is not registered."}), 404
 

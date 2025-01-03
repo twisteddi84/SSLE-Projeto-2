@@ -778,7 +778,7 @@ def register_with_registry(node_id):
     
     try:
         response = requests.post(registry_url, json={"node_id": node_id, "node_url": node_url})
-        if response.status_code == 201 or response.status_code == 200:
+        if response.status_code == 201:
             print(f"Node {node_id} registered successfully with the registry.")
             active_nodes = get_nodes()
             #send registration to active nodes
@@ -789,6 +789,13 @@ def register_with_registry(node_id):
                 active_nodes[str(node_id)] = {"url": node_url, "reputation": 100}
         elif response.status_code == 200:
             print(f"Node {node_id} already registered with the registry.")
+            if len(active_nodes) > 0:
+                send_registration_to_active_nodes(active_nodes, node_id, node_url)
+                reputation = get_reputation_from_registry(node_id)
+                active_nodes[str(node_id)] = {"url": node_url, "reputation": reputation}
+            else:
+                reputation = get_reputation_from_registry(node_id)
+                active_nodes[str(node_id)] = {"url": node_url, "reputation": reputation}
         else:
             print(f"Failed to register node {node_id}. Error: {response.text}")
     except requests.exceptions.RequestException as e:
@@ -884,6 +891,24 @@ def get_nodes():
     except requests.exceptions.RequestException as e:
         print(f"Error connecting to the registry: {e}")
         return {}
+    
+def get_reputation_from_registry(node_id):
+    """
+    Get the reputation of the current node from the registry.
+    """
+    registry_url = f"http://{registry_ip}:5000/reputation"
+    try:
+        response = requests.get(registry_url, params={"node_id": node_id})
+        if response.status_code == 200:
+            return response.json().get("reputation", 0)
+        else:
+            print(f"Failed to get reputation for Node {node_id}. Error: {response.text}")
+            return 0
+    except requests.exceptions.RequestException as e:
+        print(f"Error connecting to the registry: {e}")
+        return 0
+
+    
  
 def unregister_node(node_id):
     registry_url = f"http://{registry_ip}:5000/deregister"
