@@ -40,6 +40,21 @@ def terminate_process(process):
     process.terminate()
     process.wait()  # Wait for the process to terminate gracefully
 
+# Function to kill processes by port
+def kill_processes_by_port(port):
+    for conn in psutil.net_connections(kind='inet'):
+        if conn.laddr.port == port:
+            pid = conn.pid
+            try:
+                process = psutil.Process(pid)
+                print(f"Killing process {pid} that is using port {port}...")
+                process.terminate()  # Send termination signal
+                process.wait()  # Ensure the process is terminated
+                return True  # Return True if the process was successfully killed
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
+                print(f"Error killing process {pid}: {e}")
+    return False  # Return False if no processes were found on the port
+
 # Function to randomly select and execute a binary with node_id argument
 def execute_random_binary():
     # Randomly select one binary from the list
@@ -64,7 +79,14 @@ def execute_random_binary():
 # Function to start MTD execution
 def start_mtd_execution():
     while True:
-        # Stop any currently running processes
+        # Terminate any processes that are using ports 5001, 6000, or 7000
+        for port in [5001, 6000, 7000, 10000]:
+            if kill_processes_by_port(port):
+                print(f"Killed processes on port {port}")
+            else:
+                print(f"No processes found on port {port}")
+
+        # Stop any currently running processes of Banking_Node
         terminate_running_processes()
 
         # Execute a random binary

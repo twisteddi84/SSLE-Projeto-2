@@ -596,7 +596,7 @@ def listen_for_messages(node_id, db_name):
 
     global max_proposal
     host = "0.0.0.0"  # Listen on all interfaces
-    port = 5000
+    port = 10000
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     # Bind to the port and start listening
@@ -789,6 +789,7 @@ def register_with_registry(node_id):
                 active_nodes[str(node_id)] = {"url": node_url, "reputation": 100}
         elif response.status_code == 200:
             print(f"Node {node_id} already registered with the registry.")
+            active_nodes = get_nodes()
             if len(active_nodes) > 0:
                 send_registration_to_active_nodes(active_nodes, node_id, node_url)
                 reputation = get_reputation_from_registry(node_id)

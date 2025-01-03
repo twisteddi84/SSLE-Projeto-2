@@ -789,6 +789,7 @@ def register_with_registry(node_id):
                 active_nodes[str(node_id)] = {"url": node_url, "reputation": 100}
         elif response.status_code == 200:
             print(f"Node {node_id} already registered with the registry.")
+            active_nodes = get_nodes()
             if len(active_nodes) > 0:
                 send_registration_to_active_nodes(active_nodes, node_id, node_url)
                 reputation = get_reputation_from_registry(node_id)
