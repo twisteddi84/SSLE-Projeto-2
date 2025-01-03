@@ -774,7 +774,7 @@ def register_with_registry(node_id):
     global active_nodes
 
     registry_url = f"http://{registry_ip}:5000/register"  # Adjust URL as needed
-    node_url = f"http://{node_ip}:{5000}"
+    node_url = f"http://{node_ip}:{10000}"
     
     try:
         response = requests.post(registry_url, json={"node_id": node_id, "node_url": node_url})

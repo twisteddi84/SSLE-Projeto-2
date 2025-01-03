@@ -25,6 +25,13 @@ def register_node():
         if existing_node["url"] == node_url:
             return jsonify({"message": f"Node {node_id} already registered with URL {node_url}"}), 200
         else:
+            #Verificar se apenas muda a porta
+            existing_ip = existing_node["url"].split(":")[1]
+            new_ip = node_url.split(":")[1]
+            existing_port = existing_node["url"].split(":")[2]
+            new_port = node_url.split(":")[2]
+            if existing_ip == new_ip and existing_port != new_port:
+                return jsonify({"error": f"Node ID {node_id} already registered with a different port"}), 200
             return jsonify({"error": f"Node ID {node_id} already registered with a different URL"}), 409
 
     node_registry[node_id] = {
